@@ -487,6 +487,7 @@ pub fn unified_to_converse_request(
                 ..
             } => {
                 let content = match output {
+                    UnifiedToolOutput::Text(text) if text.is_empty() => Vec::new(),
                     UnifiedToolOutput::Text(text) => {
                         vec![ToolResultContentBlock::Text(text.clone())]
                     }
@@ -495,11 +496,14 @@ pub fn unified_to_converse_request(
                     }
                     UnifiedToolOutput::Content(parts) => parts
                         .iter()
-                        .map(|part| match &part.kind {
+                        .filter_map(|part| match &part.kind {
+                            UnifiedContentPartKind::Text { text, .. } if text.is_empty() => None,
                             UnifiedContentPartKind::Text { text, .. } => {
-                                Ok(ToolResultContentBlock::Text(text.clone()))
+                                Some(Ok(ToolResultContentBlock::Text(text.clone())))
                             }
-                            _ => Err("tool-result content mapping is not established".to_owned()),
+                            _ => Some(Err(
+                                "tool-result content mapping is not established".to_owned()
+                            )),
                         })
                         .collect::<Result<Vec<_>, _>>()?,
                     UnifiedToolOutput::Missing => {
@@ -1506,6 +1510,45 @@ mod tests {
             messages[2].content().first(),
             Some(ContentBlock::ToolResult(result)) if result.tool_use_id == "call-1"
         ));
+    }
+
+    #[test]
+    fn unified_converse_omits_empty_tool_result_text() {
+        let request = UnifiedRequest {
+            input: vec![
+                UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                    role: UnifiedRole::User,
+                    content: vec![UnifiedContentPart::text("read the file".into())],
+                    phase: None,
+                }),
+                UnifiedInputItem::new(UnifiedInputItemKind::FunctionCall {
+                    call_id: "call-1".into(),
+                    name: "read".into(),
+                    arguments: "{}".into(),
+                    caller: None,
+                    cache_control: None,
+                }),
+                UnifiedInputItem::new(UnifiedInputItemKind::FunctionCallOutput {
+                    call_id: "call-1".into(),
+                    output: UnifiedToolOutput::Text(String::new()),
+                    is_error: None,
+                    cache_control: None,
+                }),
+            ],
+            ..Default::default()
+        };
+
+        let messages = unified_to_converse_request(&request)
+            .expect("Converse")
+            .messages;
+        let result = messages.last().expect("tool result message").content();
+        let ContentBlock::ToolResult(block) = &result[0] else {
+            panic!("expected a tool result block");
+        };
+        assert!(
+            block.content().is_empty(),
+            "an empty tool output carries no content blocks"
+        );
     }
 
     #[test]

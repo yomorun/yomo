@@ -517,6 +517,28 @@ fn item_value(item: &UnifiedInputItem) -> Result<Value, String> {
     merge_extensions(&mut value, item.source_extensions.as_ref(), PROTOCOL);
     Ok(value)
 }
+/// Drop empty text parts and message items that carry no content at all.
+fn prune_empty_message_items(items: &mut Vec<Value>) {
+    for item in items.iter_mut() {
+        if item.get("type").and_then(Value::as_str) != Some("message") {
+            continue;
+        }
+        if let Some(parts) = item.get_mut("content").and_then(Value::as_array_mut) {
+            parts.retain(|part| part.get("text").and_then(Value::as_str) != Some(""));
+        }
+    }
+    items.retain(|item| {
+        if item.get("type").and_then(Value::as_str) != Some("message") {
+            return true;
+        }
+        match item.get("content") {
+            Some(Value::Array(parts)) => !parts.is_empty(),
+            Some(_) => true,
+            None => false,
+        }
+    });
+}
+
 pub fn request_to_value(request: &UnifiedRequest) -> Result<Value, String> {
     let mut value = json!({"model":request.model,"input":request.input.iter().map(item_value).collect::<Result<Vec<_>,_>>()?});
     if let Some(instructions) = &request.instructions {
@@ -576,6 +598,9 @@ pub fn request_to_value(request: &UnifiedRequest) -> Result<Value, String> {
                     .collect::<Result<Vec<_>, _>>()?
             );
         }
+    }
+    if let Some(input) = value.get_mut("input").and_then(Value::as_array_mut) {
+        prune_empty_message_items(input);
     }
     if let Some(tools) = &request.tools {
         value["tools"] = json!(
@@ -2220,6 +2245,46 @@ mod tests {
         assert!(delta_pos < text_done_pos);
         assert!(text_done_pos < part_done_pos);
         assert!(joined.contains("\"text\":\"think\""));
+    }
+
+    #[test]
+    fn upstream_request_drops_empty_message_content() {
+        let request = UnifiedRequest {
+            model: "gpt-5.3-codex".to_string(),
+            input: vec![
+                UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                    role: UnifiedRole::User,
+                    content: vec![UnifiedContentPart::text("hi".to_string())],
+                    phase: None,
+                }),
+                UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                    role: UnifiedRole::Assistant,
+                    content: vec![UnifiedContentPart::text(String::new())],
+                    phase: None,
+                }),
+                UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                    role: UnifiedRole::Assistant,
+                    content: vec![
+                        UnifiedContentPart::text(String::new()),
+                        UnifiedContentPart::text("answer".to_string()),
+                    ],
+                    phase: None,
+                }),
+            ],
+            ..Default::default()
+        };
+
+        let value = request_to_value(&request).expect("encode request");
+        let input = value["input"].as_array().expect("input");
+
+        assert_eq!(input.len(), 2, "contentless message dropped: {value}");
+        assert!(
+            input.iter().all(|item| item["content"]
+                .as_array()
+                .is_some_and(|parts| !parts.is_empty())),
+            "no message keeps empty content: {value}"
+        );
+        assert_eq!(input[1]["content"][0]["text"], "answer");
     }
 
     /// IR extra channel: unmodeled fields merged back upstream by the dialect (providers/openai_responses).
