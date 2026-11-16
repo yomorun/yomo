@@ -451,10 +451,11 @@ pub fn unified_to_converse_request(
                                 UnifiedContentPartKind::Text { text, .. } if text.is_empty()
                             ) && !matches!(
                                 &part.kind,
-                                UnifiedContentPartKind::Thinking {
-                                    text,
-                                    signature: None
-                                } if text.is_empty()
+                                UnifiedContentPartKind::Thinking { text, .. } if text.is_empty()
+                            ) && !matches!(
+                                &part.kind,
+                                UnifiedContentPartKind::Other { part_type, .. }
+                                    if part_type == "pending"
                             )
                         })
                         .map(unified_content_block)
@@ -1103,6 +1104,8 @@ pub(super) struct ConverseStreamState {
     tool_use_blocks: HashMap<i32, (String, String)>,
     tool_arguments: HashMap<i32, String>,
     tool_output_indexes: HashMap<i32, u32>,
+    /// Stop reason from `messageStop`, emitted only after the trailing usage metadata.
+    pending_ending: Option<UnifiedEnding>,
 }
 
 impl ConverseStreamState {
@@ -1121,6 +1124,28 @@ impl ConverseStreamState {
             );
         }
         self.request_id.clone()
+    }
+
+    /// Emit the buffered stop reason and the single terminal completion event.
+    ///
+    /// Called once the SDK stream is exhausted so that the trailing usage
+    /// metadata is already mapped to a `Usage` event before `Completed`.
+    pub(super) fn finish(&mut self) -> Vec<UnifiedEvent> {
+        let mut out = Vec::new();
+        if let Some(ending) = self.pending_ending.take() {
+            let mut event = UnifiedEvent::new(UnifiedEventKind::CandidateDone { ending });
+            event.target = Some(UnifiedEventTarget {
+                candidate_index: 0,
+                item_id: None,
+                output_index: None,
+                part: None,
+            });
+            out.push(event);
+        }
+        out.push(UnifiedEvent::new(UnifiedEventKind::Completed {
+            response: None,
+        }));
+        out
     }
 
     pub(super) fn on_event(
@@ -1233,17 +1258,19 @@ impl ConverseStreamState {
                                 text,
                             ) = reasoning_delta
                             {
-                                out.push(
-                                    UnifiedEvent::new(UnifiedEventKind::ContentPartDelta {
-                                        delta: UnifiedContentDelta::Thinking(text.clone()),
-                                    })
-                                    .located(
-                                        0,
-                                        self.request_id(),
-                                        0,
-                                        Some(UnifiedPartLocation::Content(index as u32)),
-                                    ),
-                                );
+                                if !text.is_empty() {
+                                    out.push(
+                                        UnifiedEvent::new(UnifiedEventKind::ContentPartDelta {
+                                            delta: UnifiedContentDelta::Thinking(text.clone()),
+                                        })
+                                        .located(
+                                            0,
+                                            self.request_id(),
+                                            0,
+                                            Some(UnifiedPartLocation::Content(index as u32)),
+                                        ),
+                                    );
+                                }
                             }
                         }
                         _ => {}
@@ -1278,21 +1305,11 @@ impl ConverseStreamState {
                 }
             }
             StreamEvent::MessageStop(stop) => {
-                let mut event = UnifiedEvent::new(UnifiedEventKind::CandidateDone {
-                    ending: UnifiedEnding::from_source(
-                        &converse_stop_reason_to_finish(stop.stop_reason.as_str()).to_snake(),
-                    ),
-                });
-                event.target = Some(UnifiedEventTarget {
-                    candidate_index: 0,
-                    item_id: None,
-                    output_index: None,
-                    part: None,
-                });
-                out.push(event);
-                out.push(UnifiedEvent::new(UnifiedEventKind::Completed {
-                    response: None,
-                }));
+                // Bedrock sends the usage metadata after `messageStop`; buffer the
+                // stop reason so terminal events follow the usage event.
+                self.pending_ending = Some(UnifiedEnding::from_source(
+                    &converse_stop_reason_to_finish(stop.stop_reason.as_str()).to_snake(),
+                ));
             }
             StreamEvent::Metadata(metadata) => {
                 if let Some(usage) = metadata.usage {
@@ -1583,6 +1600,89 @@ mod tests {
     }
 
     #[test]
+    fn unified_converse_drops_empty_thinking_history() {
+        let request = UnifiedRequest {
+            input: vec![
+                UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                    role: UnifiedRole::User,
+                    content: vec![UnifiedContentPart::text("continue".into())],
+                    phase: None,
+                }),
+                UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                    role: UnifiedRole::Assistant,
+                    content: vec![UnifiedContentPart {
+                        kind: UnifiedContentPartKind::Thinking {
+                            text: String::new(),
+                            signature: Some(String::new()),
+                        },
+                        cache_control: None,
+                        source_extensions: None,
+                    }],
+                    phase: None,
+                }),
+                UnifiedInputItem::new(UnifiedInputItemKind::FunctionCall {
+                    call_id: "call-1".into(),
+                    name: "read".into(),
+                    arguments: "{}".into(),
+                    caller: None,
+                    cache_control: None,
+                }),
+            ],
+            ..Default::default()
+        };
+
+        let messages = unified_to_converse_request(&request)
+            .expect("empty thinking blocks are dropped instead of replayed")
+            .messages;
+        assert_eq!(messages.len(), 2);
+        let assistant_blocks = messages[1].content();
+        assert!(
+            assistant_blocks
+                .iter()
+                .all(|block| !matches!(block, ContentBlock::ReasoningContent(_))),
+            "empty thinking history must not reach Bedrock"
+        );
+        assert!(matches!(&assistant_blocks[0], ContentBlock::ToolUse(call) if call.name == "read"));
+    }
+
+    #[test]
+    fn unified_converse_drops_pending_content_placeholders() {
+        let request = UnifiedRequest {
+            input: vec![
+                UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                    role: UnifiedRole::User,
+                    content: vec![UnifiedContentPart::text("continue".into())],
+                    phase: None,
+                }),
+                UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                    role: UnifiedRole::Assistant,
+                    content: vec![
+                        UnifiedContentPart {
+                            kind: UnifiedContentPartKind::Other {
+                                part_type: "pending".into(),
+                                payload: serde_json::Value::Null,
+                            },
+                            cache_control: None,
+                            source_extensions: None,
+                        },
+                        UnifiedContentPart::text("done".into()),
+                    ],
+                    phase: None,
+                }),
+            ],
+            ..Default::default()
+        };
+
+        let messages = unified_to_converse_request(&request)
+            .expect("pending placeholders are internal and must not fail conversion")
+            .messages;
+        assert_eq!(messages.len(), 2);
+        let assistant_blocks = messages[1].content();
+        assert_eq!(assistant_blocks.len(), 1);
+        assert!(matches!(&assistant_blocks[0], ContentBlock::Text(text) if text == "done"));
+    }
+
+    #[test]
     fn unified_converse_rejects_request_with_only_empty_text() {
         let request = UnifiedRequest {
             input: vec![UnifiedInputItem::new(UnifiedInputItemKind::Message {
@@ -1657,8 +1757,8 @@ mod tests {
     use crate::openai_types::Message;
     use aws_sdk_bedrockruntime::types::{
         ContentBlockDeltaEvent, ContentBlockStartEvent, ContentBlockStopEvent, ConverseOutput,
-        ConverseStreamMetadataEvent, ConverseStreamOutput, MessageStopEvent, TokenUsage,
-        ToolUseBlockDelta,
+        ConverseStreamMetadataEvent, ConverseStreamOutput, MessageStopEvent,
+        ReasoningContentBlockDelta, TokenUsage, ToolUseBlockDelta,
     };
     use serde_json::json;
 
@@ -1968,17 +2068,17 @@ mod tests {
             UnifiedEventKind::OutputItemDone { item } if matches!(&item.kind, UnifiedOutputItemKind::FunctionCall { name, .. } if name == "shell")
         ));
 
-        // messageStop → Completed
+        // messageStop → stop reason buffered until the trailing usage metadata
         let events = state.on_event(ConverseStreamOutput::MessageStop(
             MessageStopEvent::builder()
                 .stop_reason(aws_sdk_bedrockruntime::types::StopReason::ToolUse)
                 .build()
                 .expect("message stop event"),
         ));
-        assert!(events.iter().any(|event| matches!(
-            &event.kind,
-            UnifiedEventKind::CandidateDone { ending } if ending.to_chat() == "tool_calls"
-        )));
+        assert!(
+            events.is_empty(),
+            "messageStop must not emit terminal events before usage metadata"
+        );
 
         // metadata → Usage
         let events = state.on_event(ConverseStreamOutput::Metadata(
@@ -1997,6 +2097,60 @@ mod tests {
             &events[0].kind,
             UnifiedEventKind::Usage { usage, .. } if matches!(usage, EndpointUsage::ChatCompletions(_))
         ));
+
+        // stream end → CandidateDone then exactly one Completed
+        let events = state.finish();
+        assert_eq!(
+            events.len(),
+            2,
+            "finish emits the stop reason and one completion"
+        );
+        assert!(matches!(
+            &events[0].kind,
+            UnifiedEventKind::CandidateDone { ending } if ending.to_chat() == "tool_calls"
+        ));
+        assert!(matches!(
+            &events[1].kind,
+            UnifiedEventKind::Completed { response: None }
+        ));
+    }
+
+    #[test]
+    fn converse_stream_skips_empty_reasoning_deltas() {
+        let mut state = ConverseStreamState::new("m".into());
+
+        let events = state.on_event(ConverseStreamOutput::ContentBlockDelta(
+            ContentBlockDeltaEvent::builder()
+                .content_block_index(0)
+                .delta(ContentBlockDelta::ReasoningContent(
+                    ReasoningContentBlockDelta::Text(String::new()),
+                ))
+                .build()
+                .expect("empty reasoning delta"),
+        ));
+        assert!(
+            !events.iter().any(|event| matches!(
+                &event.kind,
+                UnifiedEventKind::ContentPartDelta {
+                    delta: UnifiedContentDelta::Thinking(_)
+                }
+            )),
+            "empty reasoning deltas must not open a thinking block"
+        );
+
+        let events = state.on_event(ConverseStreamOutput::ContentBlockDelta(
+            ContentBlockDeltaEvent::builder()
+                .content_block_index(0)
+                .delta(ContentBlockDelta::ReasoningContent(
+                    ReasoningContentBlockDelta::Text("plan".into()),
+                ))
+                .build()
+                .expect("reasoning delta"),
+        ));
+        assert!(events.iter().any(|event| matches!(
+            &event.kind,
+            UnifiedEventKind::ContentPartDelta { delta: UnifiedContentDelta::Thinking(delta) } if delta == "plan"
+        )));
     }
 
     #[test]

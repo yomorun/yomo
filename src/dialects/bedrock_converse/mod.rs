@@ -22,9 +22,7 @@ use tokio::sync::OnceCell;
 use crate::models::{ModelProfile, default_model_profile};
 use crate::openai_types::ErrorDetail;
 use crate::provider::UpstreamLog;
-use crate::provider::{
-    Provider, ProviderError, UnifiedEvent, UnifiedEventKind, UnifiedRequest, UnifiedResponse,
-};
+use crate::provider::{Provider, ProviderError, UnifiedEvent, UnifiedRequest, UnifiedResponse};
 use crate::serve_config::{BedrockParams, ModelBinding};
 
 /// `bedrock-converse` dialect client.
@@ -253,7 +251,9 @@ impl<M> Provider<M> for BedrockConverseProvider {
                         }
                     }
                     Ok(None) => {
-                        yield UnifiedEvent::new(UnifiedEventKind::Completed { response: None });
+                        for unified in state.finish() {
+                            yield unified;
+                        }
                         break;
                     },
                     Err(err) => {
