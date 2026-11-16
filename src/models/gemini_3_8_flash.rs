@@ -22,7 +22,7 @@ use crate::upstreams::Upstream;
 
 use super::profile_support::{
     ends_with_assistant_prefill, gemini_clamp_output_tokens, gemini_level_for_effort,
-    gemini_thinking_config, gemini_thinking_config_for_level,
+    gemini_thinking_config, gemini_thinking_config_for_level, is_adaptive_thinking,
 };
 
 const GEMINI_38_FLASH_MODEL: &str = "gemini-3.8-flash";
@@ -64,13 +64,19 @@ impl ModelProfile for Gemini38FlashProfile {
 
         let effort = request.options.reasoning_effort.as_ref();
         let thinking = request.options.thinking.as_ref();
-        if effort.is_some() && thinking.is_some() {
+        if effort.is_some() && thinking.is_some() && !is_adaptive_thinking(thinking) {
             return Err(ModelProfileError::InvalidRequest {
                 message: format!(
                     "{GEMINI_38_FLASH_MODEL} accepts only one of reasoning_effort or thinking"
                 ),
                 param: Some("reasoning_effort".to_owned()),
             });
+        }
+        if effort.is_some() && is_adaptive_thinking(thinking) {
+            debug!(
+                "gemini profile: model={} ignoring adaptive thinking in favor of reasoning_effort",
+                GEMINI_38_FLASH_MODEL
+            );
         }
         if let Some(effort) = effort {
             let level = gemini_level_for_effort(effort)?;
@@ -259,6 +265,19 @@ mod tests {
             adapt_38(&request),
             Err(ModelProfileError::InvalidRequest { .. })
         ));
+    }
+
+    #[test]
+    fn adaptive_thinking_defers_to_an_explicit_effort() {
+        let request = chat_request(json!({
+            "model": "gemini-3.8-flash",
+            "messages": [{"role": "user", "content": "hello"}],
+            "reasoning_effort": "high",
+            "thinking": {"type": "adaptive", "display": "updates"}
+        }));
+        let config = thinking(adapt_38(&request).expect("adaptive must not conflict with effort"))
+            .expect("effort carries a level");
+        assert_eq!(config.thinking_level, Some(VertexThinkingLevel::High));
     }
 
     #[test]

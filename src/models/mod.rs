@@ -296,7 +296,10 @@ impl ModelProfileRegistry {
         profiles.insert("gpt-5.6-terra".to_owned(), Arc::new(gpt_5_6_terra::PROFILE));
         profiles.insert("gpt-6-astra".to_owned(), Arc::new(gpt_6_astra::PROFILE));
         profiles.insert("gpt-6-sol".to_owned(), Arc::new(gpt_6_sol::PROFILE));
-        profiles.insert("gpt-6-luna".to_owned(), Arc::new(gpt_6_luna::PROFILE));
+        profiles.insert(
+            "gpt-6-luna".to_owned(),
+            Arc::new(gpt_6_luna::Gpt6LunaProfile),
+        );
         profiles.insert("gpt-6.1-sol".to_owned(), Arc::new(gpt_6_1_sol::PROFILE));
         profiles.insert("gpt-6.1-terra".to_owned(), Arc::new(gpt_6_1_terra::PROFILE));
         let gemini_38_flash: Arc<dyn ModelProfile> =

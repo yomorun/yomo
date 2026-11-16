@@ -21,7 +21,7 @@ use crate::upstreams::Upstream;
 
 use super::profile_support::{
     ends_with_assistant_prefill, gemini_clamp_output_tokens, gemini_level_for_effort,
-    gemini_thinking_config, gemini_thinking_config_for_level,
+    gemini_thinking_config, gemini_thinking_config_for_level, is_adaptive_thinking,
 };
 
 const GEMINI_4_ARGON_MODEL: &str = "gemini-4-argon";
@@ -60,13 +60,19 @@ impl ModelProfile for Gemini4ArgonProfile {
 
         let effort = request.options.reasoning_effort.as_ref();
         let thinking = request.options.thinking.as_ref();
-        if effort.is_some() && thinking.is_some() {
+        if effort.is_some() && thinking.is_some() && !is_adaptive_thinking(thinking) {
             return Err(ModelProfileError::InvalidRequest {
                 message: format!(
                     "{GEMINI_4_ARGON_MODEL} accepts only one of reasoning_effort or thinking"
                 ),
                 param: Some("reasoning_effort".to_owned()),
             });
+        }
+        if effort.is_some() && is_adaptive_thinking(thinking) {
+            debug!(
+                "gemini profile: model={} ignoring adaptive thinking in favor of reasoning_effort",
+                GEMINI_4_ARGON_MODEL
+            );
         }
         if let Some(effort) = effort {
             let level = gemini_level_for_effort(effort)?;

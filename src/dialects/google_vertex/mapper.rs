@@ -1302,6 +1302,17 @@ fn map_vertex_thinking_config(
             thinking_budget: None,
             include_thoughts: Some(true),
         })),
+        (Some(level), Some(thinking))
+            if thinking.get("type").and_then(Value::as_str) == Some("adaptive") =>
+        {
+            // Adaptive means the provider decides; an explicit effort selects
+            // the documented thinking level instead of conflicting with it.
+            Ok(Some(VertexThinkingConfig {
+                thinking_level: Some(vertex_thinking_level(level)?),
+                thinking_budget: None,
+                include_thoughts: Some(true),
+            }))
+        }
         (Some(_), Some(_)) => Err(ProviderError::Public {
             status: StatusCode::BAD_REQUEST,
             error: ErrorDetail {
@@ -2047,7 +2058,21 @@ mod tests {
             .expect("disable carries a zero budget");
         assert_eq!(config.thinking_budget, Some(0));
 
-        // Two controls together violate the adaptation contract.
+        // Adaptive thinking defers to an explicit effort instead of conflicting.
+        let adaptive_with_effort = UnifiedRequest {
+            options: crate::provider::UnifiedRequestOptions {
+                reasoning_effort: Some("high".into()),
+                thinking: Some(serde_json::json!({"type": "adaptive"})),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let config = map_vertex_thinking_config(&adaptive_with_effort)
+            .expect("adaptive thinking does not conflict with effort")
+            .expect("effort carries a level");
+        assert_eq!(config.thinking_level, Some(VertexThinkingLevel::High));
+
+        // Two concrete controls together violate the adaptation contract.
         let conflicting = UnifiedRequest {
             options: crate::provider::UnifiedRequestOptions {
                 reasoning_effort: Some("high".into()),

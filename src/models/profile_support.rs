@@ -32,6 +32,29 @@ pub(super) fn is_responses_binding(binding: &ModelBinding, upstream: Upstream) -
     binding.upstream == upstream && binding.dialect == Some(Dialect::OpenAiResponses)
 }
 
+/// Return true when the client asks the provider to decide how much to think.
+pub(super) fn is_adaptive_thinking(thinking: Option<&Value>) -> bool {
+    thinking
+        .and_then(Value::as_object)
+        .and_then(|fields| fields.get("type"))
+        .and_then(Value::as_str)
+        == Some("adaptive")
+}
+
+/// Drop an adaptive thinking control for a target without an adaptive mode.
+///
+/// Adaptive means "let the provider decide", which is the target's default
+/// behavior, so the control has no equivalent to forward; an explicit
+/// reasoning effort is kept. Returns true when the control was removed.
+pub(super) fn drop_adaptive_thinking(request: &mut UnifiedRequest) -> bool {
+    if is_adaptive_thinking(request.options.thinking.as_ref()) {
+        request.options.thinking = None;
+        true
+    } else {
+        false
+    }
+}
+
 pub(super) fn to_chat_request(
     request: &UnifiedRequest,
 ) -> Result<ChatCompletionRequest, ModelProfileError> {
