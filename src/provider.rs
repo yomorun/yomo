@@ -918,7 +918,17 @@ impl UnifiedOutputItem {
                 phase,
             } => UnifiedInputItemKind::Message {
                 role: *role,
-                content: content.clone(),
+                content: content
+                    .iter()
+                    .filter(|part| {
+                        !matches!(
+                            &part.kind,
+                            UnifiedContentPartKind::Other { part_type, .. }
+                                if part_type == "pending"
+                        )
+                    })
+                    .cloned()
+                    .collect(),
                 phase: phase.clone(),
             },
             UnifiedOutputItemKind::FunctionCall {
@@ -2352,6 +2362,37 @@ mod tests {
                 .as_deref(),
             Some("future")
         );
+    }
+
+    #[test]
+    fn output_replay_drops_pending_content_placeholders() {
+        let item = UnifiedOutputItem::new(
+            "internal".into(),
+            UnifiedOutputItemKind::Message {
+                role: UnifiedRole::Assistant,
+                content: vec![
+                    UnifiedContentPart {
+                        kind: UnifiedContentPartKind::Other {
+                            part_type: "pending".into(),
+                            payload: Value::Null,
+                        },
+                        cache_control: None,
+                        source_extensions: None,
+                    },
+                    UnifiedContentPart::text("answer".into()),
+                ],
+                phase: None,
+            },
+        );
+        let replay = item.as_input();
+        let UnifiedInputItemKind::Message { content, .. } = replay.kind else {
+            panic!("message replay");
+        };
+        assert_eq!(content.len(), 1);
+        assert!(matches!(
+            &content[0].kind,
+            UnifiedContentPartKind::Text { text, .. } if text == "answer"
+        ));
     }
 
     #[test]
