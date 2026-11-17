@@ -272,6 +272,18 @@ pub struct ModelProfileRegistry {
 }
 
 impl ModelProfileRegistry {
+    /// Create a registry without built-in model profiles.
+    ///
+    /// Every public model resolves to the default conversion, so callers that
+    /// must not apply yomo's built-in model behavior can register only their own
+    /// profiles on top of it.
+    pub fn empty() -> Self {
+        Self {
+            profiles: HashMap::new(),
+            default: Arc::new(DefaultModelProfile),
+        }
+    }
+
     /// Create a registry with built-in model profiles and default conversion behavior.
     pub fn new() -> Self {
         let mut profiles: HashMap<String, Arc<dyn ModelProfile>> = HashMap::new();
@@ -604,6 +616,67 @@ mod tests {
             .expect("default Responses conversion")
             .expect("registered profile falls back for Responses");
         assert_eq!(fallback.model, "deployment-model");
+    }
+
+    #[test]
+    fn empty_registry_skips_builtin_profiles_until_one_is_registered() {
+        let profiles = ModelProfileRegistry::empty();
+        let request = crate::api::request_from_value(
+            &json!({
+                "model": "glm-5.3-flash",
+                "messages": [{"role": "user", "content": "hello"}],
+                "reasoning_effort": "medium"
+            }),
+            UnifiedSourceProtocol::ChatCompletions,
+        )
+        .expect("parse Chat request");
+        let glm_binding = ModelBinding {
+            public_model: "glm-5.3-flash".to_owned(),
+            model: "glm-5.3-flash".to_owned(),
+            provider: "qcloud.cn".into(),
+            upstream: Upstream::Tokenhub,
+            upstream_model: "glm-5.3-flash".into(),
+            dialect: Some(Dialect::OpenAiChatCompletions),
+            label: "qcloud.cn.glm-5.3-flash".into(),
+        };
+
+        let converted = profiles
+            .resolve("glm-5.3-flash")
+            .to_openai_chat_request(&request, &glm_binding)
+            .expect("default conversion")
+            .expect("default conversion produces a Chat request");
+        assert_eq!(
+            converted
+                .reasoning_effort
+                .as_ref()
+                .and_then(|effort| effort.as_str()),
+            Some("medium"),
+            "an empty registry must not apply the built-in glm-5.3-flash normalization"
+        );
+
+        // The built-in registry rewrites the same request onto the supported set.
+        let builtin = ModelProfileRegistry::default()
+            .resolve("glm-5.3-flash")
+            .to_openai_chat_request(&request, &glm_binding)
+            .expect("built-in conversion")
+            .expect("built-in profile handles this binding");
+        assert_eq!(
+            builtin
+                .reasoning_effort
+                .as_ref()
+                .and_then(|effort| effort.as_str()),
+            Some("high")
+        );
+
+        // A profile registered on top of an empty registry still applies.
+        let mut with_alias = ModelProfileRegistry::empty();
+        with_alias.register("chat-alias", Arc::new(AliasProfile));
+        let alias = with_alias
+            .resolve("chat-alias")
+            .to_openai_chat_request(&UnifiedRequest::default(), &binding("chat-alias"))
+            .expect("registered profile conversion")
+            .expect("registered profile handles conversion");
+        assert_eq!(alias.model, "chat-alias");
     }
 
     #[test]
