@@ -203,6 +203,7 @@ pub(crate) fn rewrite_messages_body(
     body: &Bytes,
     anthropic_version: &str,
     default_max_tokens: u64,
+    model_id: &str,
 ) -> Result<Bytes, anyhow::Error> {
     let mut value: Value = serde_json::from_slice(body)?;
     if !value.is_object() {
@@ -219,6 +220,7 @@ pub(crate) fn rewrite_messages_body(
 
     strip_cache_control_scope(&mut value);
     strip_bedrock_unsupported_beta_fields(&mut value);
+    normalize_bedrock_thinking_block_binding(&mut value, model_id);
 
     {
         let obj = value
@@ -237,6 +239,51 @@ pub(crate) fn rewrite_messages_body(
     }
 
     Ok(Bytes::from(serde_json::to_vec(&value)?))
+}
+
+const BEDROCK_THINKING_BLOCK_BINDING_BETA: &str = "thinking-binding-controls-2026-08-01";
+const BEDROCK_THINKING_BLOCK_BINDING_MODELS: [&str; 7] = [
+    "claude-fable-5-1",
+    "claude-fable-5-2",
+    "claude-haiku-5-5",
+    "claude-mythos-5-1",
+    "claude-mythos-5-2",
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+];
+
+// Bedrock InvokeModel carries Anthropic beta opt-ins in the JSON body, not HTTP headers.
+fn normalize_bedrock_thinking_block_binding(value: &mut Value, model_id: &str) {
+    let has_block_binding = value.pointer("/thinking/block_binding").is_some();
+    if !has_block_binding {
+        return;
+    }
+
+    let model_name = model_id.rsplit('.').next().unwrap_or(model_id);
+    if !BEDROCK_THINKING_BLOCK_BINDING_MODELS.contains(&model_name) {
+        if let Some(thinking) = value.get_mut("thinking").and_then(Value::as_object_mut) {
+            thinking.remove("block_binding");
+        }
+        return;
+    }
+
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    let betas = object
+        .entry("anthropic_beta")
+        .or_insert_with(|| Value::Array(Vec::new()));
+    let Some(betas) = betas.as_array_mut() else {
+        return;
+    };
+    if !betas
+        .iter()
+        .any(|beta| beta.as_str() == Some(BEDROCK_THINKING_BLOCK_BINDING_BETA))
+    {
+        betas.push(Value::String(
+            BEDROCK_THINKING_BLOCK_BINDING_BETA.to_string(),
+        ));
+    }
 }
 
 // follow: https://code.claude.com/docs/en/errors#extra-inputs-are-not-permitted
@@ -414,6 +461,7 @@ mod tests {
             &Bytes::from(serde_json::to_vec(&request).expect("request json should serialize")),
             "bedrock-2023-05-31",
             4096,
+            "claude-sonnet-4",
         )
         .expect("rewrite should succeed");
         let parsed: Value =
@@ -429,6 +477,7 @@ mod tests {
         );
         assert_eq!(parsed.get("max_tokens"), Some(&json!(4096)));
         assert!(parsed["tools"][0]["custom"].get("input_examples").is_none());
+        assert!(parsed.get("anthropic_beta").is_none());
         assert_eq!(
             parsed["tools"][0]["custom"].get("input_schema"),
             Some(&json!({"type": "object"}))
@@ -446,11 +495,109 @@ mod tests {
             &Bytes::from(serde_json::to_vec(&request).expect("request json should serialize")),
             "bedrock-2023-05-31",
             4096,
+            "claude-sonnet-4",
         )
         .expect("rewrite should succeed");
         let parsed: Value =
             serde_json::from_slice(&rewritten).expect("rewritten json should parse");
 
         assert_eq!(parsed.get("max_tokens"), Some(&json!(123)));
+    }
+
+    #[test]
+    fn rewrite_messages_body_adds_thinking_binding_beta_for_supported_models() {
+        for model_id in [
+            "claude-fable-5-1",
+            "claude-fable-5-2",
+            "claude-haiku-5-5",
+            "claude-mythos-5-1",
+            "claude-mythos-5-2",
+            "claude-opus-5-5",
+            "claude-sonnet-5-5",
+        ] {
+            let request = json!({
+                "thinking": {
+                    "type": "adaptive",
+                    "block_binding": {"prefix_mismatch_behavior": "drop_block"}
+                },
+                "messages": [{"role": "user", "content": "hello"}]
+            });
+
+            let rewritten = rewrite_messages_body(
+                &Bytes::from(serde_json::to_vec(&request).expect("request json should serialize")),
+                "bedrock-2023-05-31",
+                4096,
+                model_id,
+            )
+            .expect("rewrite should succeed");
+            let parsed: Value =
+                serde_json::from_slice(&rewritten).expect("rewritten json should parse");
+
+            assert_eq!(
+                parsed["anthropic_beta"],
+                json!(["thinking-binding-controls-2026-08-01"]),
+                "model {model_id} should receive the Bedrock beta"
+            );
+            assert_eq!(
+                parsed["thinking"]["block_binding"]["prefix_mismatch_behavior"],
+                "drop_block"
+            );
+        }
+    }
+
+    #[test]
+    fn rewrite_messages_body_preserves_and_deduplicates_existing_anthropic_betas() {
+        let request = json!({
+            "anthropic_beta": [
+                "interleaved-thinking-2025-05-14",
+                "thinking-binding-controls-2026-08-01"
+            ],
+            "thinking": {
+                "type": "adaptive",
+                "block_binding": {"prefix_mismatch_behavior": "drop_block"}
+            }
+        });
+
+        let rewritten = rewrite_messages_body(
+            &Bytes::from(serde_json::to_vec(&request).expect("request json should serialize")),
+            "bedrock-2023-05-31",
+            4096,
+            "claude-opus-5-5",
+        )
+        .expect("rewrite should succeed");
+        let parsed: Value =
+            serde_json::from_slice(&rewritten).expect("rewritten json should parse");
+
+        assert_eq!(
+            parsed["anthropic_beta"],
+            json!([
+                "interleaved-thinking-2025-05-14",
+                "thinking-binding-controls-2026-08-01"
+            ])
+        );
+    }
+
+    #[test]
+    fn rewrite_messages_body_strips_thinking_binding_for_unsupported_models() {
+        let request = json!({
+            "thinking": {
+                "type": "adaptive",
+                "block_binding": {"prefix_mismatch_behavior": "drop_block"}
+            }
+        });
+
+        let rewritten = rewrite_messages_body(
+            &Bytes::from(serde_json::to_vec(&request).expect("request json should serialize")),
+            "bedrock-2023-05-31",
+            4096,
+            "claude-opus-5",
+        )
+        .expect("rewrite should succeed");
+        let parsed: Value =
+            serde_json::from_slice(&rewritten).expect("rewritten json should parse");
+
+        assert_eq!(parsed["thinking"]["type"], "adaptive");
+        assert!(parsed["thinking"].get("block_binding").is_none());
+        assert!(parsed.get("anthropic_beta").is_none());
     }
 }
