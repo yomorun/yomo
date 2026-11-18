@@ -82,8 +82,12 @@ impl<M> ModelApiProvider<M> for BedrockMessagesClient {
         _metadata: &M,
     ) -> Result<ProviderResponse, anyhow::Error> {
         let stream = parse_stream_flag(&req.body);
-        let body =
-            rewrite_messages_body(&req.body, &self.anthropic_version, self.default_max_tokens)?;
+        let body = rewrite_messages_body(
+            &req.body,
+            &self.anthropic_version,
+            self.default_max_tokens,
+            &self.model_id,
+        )?;
         let client = self.client().await?;
 
         if stream {
