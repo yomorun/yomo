@@ -26,7 +26,9 @@ use crate::provider::{
     UnifiedOutputItemKind, UnifiedRequest, UnifiedToolOutput, UnifiedUsageUpdate, apply_event,
 };
 use crate::trace::record_usage_attributes;
-use crate::usage_handler::{EndpointUsage, NoopUsageHandler, UsageHandler, aggregate_to_openai};
+use crate::usage_handler::{
+    EndpointUsage, NoopUsageHandler, UsageHandler, aggregate_endpoint_usages, aggregate_to_openai,
+};
 use crate::utils::ensure_tool_call_id;
 use async_trait::async_trait;
 
@@ -100,7 +102,7 @@ struct ToolMaps {
 
 struct StreamLoopState {
     call_count: usize,
-    round_usages: Vec<Value>,
+    round_usages: Vec<EndpointUsage>,
     last_finish_reason: Option<String>,
 }
 
@@ -127,6 +129,8 @@ struct StreamRoundState {
     request_id: Option<String>,
     response: UnifiedResponse,
     pending_tool_events: Vec<UnifiedEvent>,
+    /// Provider terminal event, held back until this round's usage is processed.
+    pending_terminal: Option<UnifiedEvent>,
 }
 
 impl StreamRoundState {
@@ -144,6 +148,7 @@ impl StreamRoundState {
             request_id: None,
             response: UnifiedResponse::new(String::new(), String::new()),
             pending_tool_events: Vec::new(),
+            pending_terminal: None,
         }
     }
 }
@@ -207,7 +212,7 @@ where
 {
     let parent_span = Span::current();
     let mut call_count = 0usize;
-    let mut round_usages: Vec<Value> = Vec::new();
+    let mut round_usages: Vec<EndpointUsage> = Vec::new();
     loop {
         let llm_chat_span = info_span!(
             parent: &parent_span,
@@ -261,7 +266,9 @@ where
             .unwrap_or_else(crate::openai_http_mapping::empty_usage);
         record_usage_attributes(&llm_chat_span, "usage", &raw_usage);
         let usage_handler = Arc::clone(&config.usage_handler);
-        let model_id = response.model.clone();
+        // Usage is attributed to the routed public model, matching the streaming
+        // path and the SKU label; the provider response carries the upstream name.
+        let model_id = request.model.clone();
         let request_id = response.id.clone();
         let usage_trace_id = trace_id.clone();
         let label = label.clone();
@@ -276,12 +283,8 @@ where
                 raw_usage,
             )
             .instrument(llm_chat_span.clone())
-            .await
-            .into_payload("/chat/completions");
-        response.usage = Some(
-            EndpointUsage::from_endpoint_payload("/chat/completions", modified_usage.clone())
-                .expect("agent_loop expected chat/completions usage payload"),
-        );
+            .await;
+        response.usage = Some(modified_usage.clone());
         round_usages.push(modified_usage);
         call_count += 1;
 
@@ -304,47 +307,23 @@ where
             is_total_token_limit_reached(config.max_total_tokens, &round_usages);
         if reached_max_calls || reached_max_total_tokens {
             retain_response_tool_calls(&mut response, &client_calls);
-            response.usage = Some(
-                EndpointUsage::from_endpoint_payload(
-                    "/chat/completions",
-                    aggregate_usages_to_value("/chat/completions", &round_usages),
-                )
-                .expect("agent_loop expected chat/completions usage payload"),
-            );
+            response.usage = Some(aggregate_endpoint_usages(&round_usages));
             return Ok(AgentLoopResult::NonStream(response));
         }
 
         if tool_calls.is_empty() {
-            response.usage = Some(
-                EndpointUsage::from_endpoint_payload(
-                    "/chat/completions",
-                    aggregate_usages_to_value("/chat/completions", &round_usages),
-                )
-                .expect("agent_loop expected chat/completions usage payload"),
-            );
+            response.usage = Some(aggregate_endpoint_usages(&round_usages));
             return Ok(AgentLoopResult::NonStream(response));
         }
 
         if server_calls.is_empty() {
             retain_response_tool_calls(&mut response, &client_calls);
-            response.usage = Some(
-                EndpointUsage::from_endpoint_payload(
-                    "/chat/completions",
-                    aggregate_usages_to_value("/chat/completions", &round_usages),
-                )
-                .expect("agent_loop expected chat/completions usage payload"),
-            );
+            response.usage = Some(aggregate_endpoint_usages(&round_usages));
             return Ok(AgentLoopResult::NonStream(response));
         }
         if !client_calls.is_empty() {
             retain_response_tool_calls(&mut response, &client_calls);
-            response.usage = Some(
-                EndpointUsage::from_endpoint_payload(
-                    "/chat/completions",
-                    aggregate_usages_to_value("/chat/completions", &round_usages),
-                )
-                .expect("agent_loop expected chat/completions usage payload"),
-            );
+            response.usage = Some(aggregate_endpoint_usages(&round_usages));
             return Ok(AgentLoopResult::NonStream(response));
         }
 
@@ -560,19 +539,13 @@ where
                 let usage_event = matches!(&event.kind, UnifiedEventKind::Usage { .. });
                 if let Some(chunk_usage) = event_usage(&round_state.response, &event) {
                     let changed = round_state.raw_usage.as_ref().is_none_or(|old| old.raw_payload() != chunk_usage.raw_payload());
+                    round_state.openai_usage_payload =
+                        Some(chunk_usage.clone().into_payload("/chat/completions"));
                     round_state.raw_usage = Some(chunk_usage.clone());
-                    let processed_usage = chunk_usage.into_payload("/chat/completions");
-                    round_state.openai_usage_payload = Some(processed_usage.clone());
                     let mut usage_with_history = loop_state.round_usages.clone();
-                    usage_with_history.push(processed_usage);
-                    let usage_with_offset =
-                        aggregate_usages_to_value("/chat/completions", &usage_with_history);
+                    usage_with_history.push(chunk_usage);
                     if changed { yield UnifiedEvent::new(UnifiedEventKind::Usage {
-                        usage: EndpointUsage::from_endpoint_payload(
-                            "/chat/completions",
-                            usage_with_offset,
-                        )
-                        .expect("agent_loop expected chat/completions usage payload"),
+                        usage: aggregate_endpoint_usages(&usage_with_history),
                         update: UnifiedUsageUpdate::Snapshot,
                         source_usage: None,
                     }); }
@@ -580,7 +553,13 @@ where
                 if usage_event { continue; }
 
                 if !round_state.saw_tool_call {
-                    yield event;
+                    if is_terminal_event(&event.kind) {
+                        // Hold the terminal event back until this round's usage has been
+                        // processed, so the client sees the handler's final usage.
+                        round_state.pending_terminal = Some(event);
+                    } else {
+                        yield event;
+                    }
                 }
             }
 
@@ -593,8 +572,8 @@ where
                 "finish_reason",
                 round_state.finish_reason.as_deref().unwrap_or(""),
             );
-            if let Some(raw_usage) = &round_state.raw_usage {
-                record_usage_attributes(&llm_chat_span, "usage", raw_usage);
+            if let Some(raw_usage) = round_state.raw_usage.clone() {
+                record_usage_attributes(&llm_chat_span, "usage", &raw_usage);
                 let modified_usage = config
                     .usage_handler
                     .on_usage(
@@ -603,12 +582,18 @@ where
                         round_state.request_id.as_deref().unwrap_or(""),
                         &trace_id,
                         (*metadata).clone(),
-                        raw_usage.clone(),
+                        raw_usage,
                     )
                     .instrument(llm_chat_span.clone())
-                    .await
-                    .into_payload("/chat/completions");
+                    .await;
                 loop_state.round_usages.push(modified_usage);
+                // Emitted before the terminal event so the response carries the
+                // usage the handler returned, in its native shape.
+                yield UnifiedEvent::new(UnifiedEventKind::Usage {
+                    usage: aggregate_endpoint_usages(&loop_state.round_usages),
+                    update: UnifiedUsageUpdate::Snapshot,
+                    source_usage: None,
+                });
             }
             log_llm_call(
                 loop_state.call_count,
@@ -631,13 +616,20 @@ where
                     for event in events {
                         yield event;
                     }
-                } else if let Some(completed) = build_completed_event(&round_state.finish_reason) {
-                    yield completed;
+                } else if let Some(terminal) = round_state
+                    .pending_terminal
+                    .take()
+                    .or_else(|| build_completed_event(&round_state.finish_reason))
+                {
+                    yield terminal;
                 }
                 break;
             }
 
             if server_calls.is_empty() && client_calls.is_empty() {
+                if let Some(terminal) = round_state.pending_terminal.take() {
+                    yield terminal;
+                }
                 break;
             }
             if server_calls.is_empty() {
@@ -694,13 +686,14 @@ where
             tool_messages.extend(tool_messages_from_invoker.into_iter().map(tool_message_to_input));
             request.input.extend(tool_messages);
         }
-        let total_usage = aggregate_to_openai("/chat/completions", &loop_state.round_usages);
+        let total_usage = aggregate_endpoint_usages(&loop_state.round_usages);
+        let total_openai = map_usage_to_log(&total_usage.into_payload("/chat/completions"));
         info!(
             "http.request.end; status_code=200 model_id={} finish_reason={} prompt_tokens={} completion_tokens={} trace_id={}",
             model_id,
             loop_state.last_finish_reason.as_deref().unwrap_or(""),
-            total_usage.prompt_tokens,
-            total_usage.completion_tokens,
+            total_openai.prompt_tokens,
+            total_openai.completion_tokens,
             trace_id
         );
     };
@@ -1229,16 +1222,22 @@ fn usage_to_value(usage: &EndpointUsage) -> Value {
     usage.clone().into_payload("/chat/completions")
 }
 
-fn aggregate_usages_to_value(endpoint: &str, usages: &[Value]) -> Value {
-    serde_json::to_value(aggregate_to_openai(endpoint, usages)).unwrap_or(Value::Null)
-}
-
-fn is_total_token_limit_reached(max_total_tokens: Option<i64>, usages: &[Value]) -> bool {
+fn is_total_token_limit_reached(max_total_tokens: Option<i64>, usages: &[EndpointUsage]) -> bool {
     let Some(max_total_tokens) = max_total_tokens else {
         return false;
     };
-    let usage = aggregate_to_openai("/chat/completions", usages);
-    usage.total_tokens >= max_total_tokens
+    aggregate_endpoint_usages(usages).total_tokens() >= max_total_tokens
+}
+
+/// Terminal event kinds that close a round's provider stream.
+fn is_terminal_event(kind: &UnifiedEventKind) -> bool {
+    matches!(
+        kind,
+        UnifiedEventKind::Completed { .. }
+            | UnifiedEventKind::Incomplete { .. }
+            | UnifiedEventKind::Failed { .. }
+            | UnifiedEventKind::Cancelled { .. }
+    )
 }
 
 fn finish_reason_to_str(reason: &FinishReason) -> &'static str {
@@ -1300,7 +1299,9 @@ mod tests {
     use crate::tool_invoker::ToolInvoker;
     use crate::types::{RequestHeaders, ToolRequest, ToolResponse};
     use crate::usage_handler::{EndpointUsage, UsageHandler};
-    use crate::usage_types::GenerateContentUsage;
+    use crate::usage_types::{
+        GenerateContentUsage, MessagesCacheCreation, MessagesServerToolUse, MessagesUsage,
+    };
 
     #[test]
     fn terminal_snapshots_supply_usage_without_suppressing_empty_completion() {
@@ -1613,11 +1614,16 @@ mod tests {
     #[derive(Clone, Default)]
     struct RecordingUsageHandler {
         calls: Arc<Mutex<Vec<EndpointUsage>>>,
+        models: Arc<Mutex<Vec<String>>>,
     }
 
     impl RecordingUsageHandler {
         fn captured(&self) -> Vec<EndpointUsage> {
             self.calls.lock().expect("usage calls lock").clone()
+        }
+
+        fn captured_models(&self) -> Vec<String> {
+            self.models.lock().expect("usage models lock").clone()
         }
     }
 
@@ -1625,7 +1631,7 @@ mod tests {
     impl UsageHandler<()> for RecordingUsageHandler {
         async fn on_usage(
             &self,
-            _model_id: &str,
+            model_id: &str,
             _label: Option<&str>,
             _request_id: &str,
             _trace_id: &str,
@@ -1636,6 +1642,10 @@ mod tests {
                 .lock()
                 .expect("usage calls lock")
                 .push(usage.clone());
+            self.models
+                .lock()
+                .expect("usage models lock")
+                .push(model_id.to_string());
             usage
         }
     }
@@ -1683,6 +1693,56 @@ mod tests {
         };
         crate::dialects::openai_chat_completions::mapper::request_from_chat(&request)
             .expect("request")
+    }
+
+    fn messages_usage(
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_input_tokens: i64,
+        cache_creation_input_tokens: i64,
+    ) -> EndpointUsage {
+        EndpointUsage::Messages(MessagesUsage {
+            input_tokens: Some(input_tokens),
+            output_tokens: Some(output_tokens),
+            cache_creation_input_tokens: Some(cache_creation_input_tokens),
+            cache_read_input_tokens: Some(cache_read_input_tokens),
+            cache_creation: Some(MessagesCacheCreation {
+                ephemeral_5m_input_tokens: Some(cache_creation_input_tokens),
+                ephemeral_1h_input_tokens: Some(0),
+            }),
+            inference_geo: None,
+            service_tier: None,
+            server_tool_use: Some(MessagesServerToolUse {
+                web_search_requests: Some(0),
+                web_fetch_requests: Some(0),
+            }),
+        })
+    }
+
+    /// Adds five prompt tokens so tests can tell handler output from raw usage.
+    #[derive(Default)]
+    struct BoostUsageHandler;
+
+    #[async_trait]
+    impl UsageHandler<()> for BoostUsageHandler {
+        async fn on_usage(
+            &self,
+            _model_id: &str,
+            _label: Option<&str>,
+            _request_id: &str,
+            _trace_id: &str,
+            _metadata: (),
+            usage: EndpointUsage,
+        ) -> EndpointUsage {
+            match usage {
+                EndpointUsage::ChatCompletions(mut usage) => {
+                    usage.prompt_tokens += 5;
+                    usage.total_tokens += 5;
+                    EndpointUsage::ChatCompletions(usage)
+                }
+                other => other,
+            }
+        }
     }
 
     fn usage(prompt_tokens: i64, completion_tokens: i64, total_tokens: i64) -> EndpointUsage {
@@ -1859,10 +1919,13 @@ mod tests {
             }
         }
 
-        assert_eq!(output_usages.len(), 1);
+        // The in-round snapshot plus the processed aggregate emitted before the
+        // terminal event; client serializers report the last one.
+        assert_eq!(output_usages.len(), 2);
         assert_eq!(output_usages[0]["prompt_tokens"], 22);
-        assert_eq!(output_usages[0]["completion_tokens"], 4);
-        assert_eq!(output_usages[0]["total_tokens"], 26);
+        assert_eq!(output_usages[1]["prompt_tokens"], 22);
+        assert_eq!(output_usages[1]["completion_tokens"], 4);
+        assert_eq!(output_usages[1]["total_tokens"], 26);
         let calls = usage_handler.captured();
         assert_eq!(calls.len(), 1);
         assert_eq!(
@@ -1872,6 +1935,193 @@ mod tests {
                 "completion_tokens": 4,
                 "total_tokens": 26
             })
+        );
+    }
+
+    #[tokio::test]
+    async fn run_agent_loop_attributes_usage_to_the_public_model() {
+        // Non-stream: the provider reports the upstream model name.
+        let usage_handler = RecordingUsageHandler::default();
+        let provider = StaticCompleteProvider {
+            response: {
+                let mut response = UnifiedResponse::new(
+                    "req-1".into(),
+                    "global.anthropic.claude-haiku-5-5".into(),
+                );
+                response.usage = Some(messages_usage(10, 2, 0, 0));
+                response
+            },
+        };
+        let config = AgentLoopConfig {
+            max_calls: 1,
+            usage_handler: Arc::new(usage_handler.clone()),
+            ..AgentLoopConfig::default()
+        };
+        let mut request = stream_request();
+        request.controls.stream = Some(false);
+        let _ = run_agent_loop::<(), ()>(
+            Arc::new(provider),
+            request,
+            HashMap::new(),
+            Arc::new(NoopToolInvoker),
+            (),
+            "trace-1".to_string(),
+            None,
+            config,
+        )
+        .await
+        .expect("non-stream run should succeed");
+        assert_eq!(usage_handler.captured_models(), vec!["mock-model"]);
+
+        // Stream: the round's request model is used as well.
+        let usage_handler = RecordingUsageHandler::default();
+        let provider = StaticStreamProvider {
+            events: Arc::new(vec![
+                start("req-1"),
+                usage_event(messages_usage(10, 2, 0, 0)),
+                completed(Some("stop")),
+            ]),
+        };
+        let config = AgentLoopConfig {
+            max_calls: 1,
+            usage_handler: Arc::new(usage_handler.clone()),
+            ..AgentLoopConfig::default()
+        };
+        let mut events = match run_agent_loop::<(), ()>(
+            Arc::new(provider),
+            stream_request(),
+            HashMap::new(),
+            Arc::new(NoopToolInvoker),
+            (),
+            "trace-1".to_string(),
+            None,
+            config,
+        )
+        .await
+        .expect("stream run should succeed")
+        {
+            AgentLoopResult::Stream { events } => events,
+            AgentLoopResult::NonStream(_) => panic!("expected stream result"),
+        };
+        while events.next().await.is_some() {}
+        assert_eq!(usage_handler.captured_models(), vec!["mock-model"]);
+    }
+
+    #[tokio::test]
+    async fn run_agent_loop_stream_reports_processed_usage_before_terminal() {
+        let provider = StaticStreamProvider {
+            events: Arc::new(vec![
+                start("req-1"),
+                usage_event(usage(10, 2, 12)),
+                completed(Some("stop")),
+            ]),
+        };
+        let config = AgentLoopConfig {
+            max_calls: 1,
+            usage_handler: Arc::new(BoostUsageHandler),
+            ..AgentLoopConfig::default()
+        };
+
+        let result = run_agent_loop::<(), ()>(
+            Arc::new(provider),
+            stream_request(),
+            HashMap::new(),
+            Arc::new(NoopToolInvoker),
+            (),
+            "trace-1".to_string(),
+            None,
+            config,
+        )
+        .await
+        .expect("stream run should succeed");
+
+        let AgentLoopResult::Stream { mut events } = result else {
+            panic!("expected stream result");
+        };
+        let mut usages_before_terminal = Vec::new();
+        let mut terminal_seen = false;
+        while let Some(event) = events.next().await {
+            let event = event.expect("stream event should be ok");
+            match event.kind {
+                UnifiedEventKind::Usage { usage, .. } => {
+                    if !terminal_seen {
+                        usages_before_terminal.push(usage);
+                    }
+                }
+                UnifiedEventKind::Completed { .. } => terminal_seen = true,
+                _ => {}
+            }
+        }
+
+        assert!(
+            terminal_seen,
+            "the terminal event must still reach the client"
+        );
+        // The last usage the client sees before finishing is the handler's output.
+        let reported = usages_before_terminal
+            .last()
+            .expect("a processed usage event precedes the terminal event")
+            .clone()
+            .into_payload("/chat/completions");
+        assert_eq!(reported["prompt_tokens"], 15);
+        assert_eq!(reported["completion_tokens"], 2);
+        assert_eq!(reported["total_tokens"], 17);
+    }
+
+    #[tokio::test]
+    async fn run_agent_loop_stream_keeps_messages_usage_shape() {
+        let provider = StaticStreamProvider {
+            events: Arc::new(vec![
+                start("req-1"),
+                usage_event(messages_usage(3, 4, 100, 20)),
+                completed(Some("stop")),
+            ]),
+        };
+        let config = AgentLoopConfig {
+            max_calls: 1,
+            usage_handler: Arc::new(RecordingUsageHandler::default()),
+            ..AgentLoopConfig::default()
+        };
+
+        let result = run_agent_loop::<(), ()>(
+            Arc::new(provider),
+            stream_request(),
+            HashMap::new(),
+            Arc::new(NoopToolInvoker),
+            (),
+            "trace-1".to_string(),
+            None,
+            config,
+        )
+        .await
+        .expect("stream run should succeed");
+
+        let AgentLoopResult::Stream { mut events } = result else {
+            panic!("expected stream result");
+        };
+        let mut last_usage = None;
+        while let Some(event) = events.next().await {
+            if let UnifiedEventKind::Usage { usage, .. } =
+                event.expect("stream event should be ok").kind
+            {
+                last_usage = Some(usage);
+            }
+        }
+
+        // Claude cache quantities must survive round aggregation.
+        let Some(EndpointUsage::Messages(usage)) = last_usage else {
+            panic!("expected messages usage on the client stream");
+        };
+        assert_eq!(usage.input_tokens, Some(3));
+        assert_eq!(usage.output_tokens, Some(4));
+        assert_eq!(usage.cache_read_input_tokens, Some(100));
+        assert_eq!(usage.cache_creation_input_tokens, Some(20));
+        assert_eq!(
+            usage
+                .cache_creation
+                .as_ref()
+                .and_then(|cache| cache.ephemeral_5m_input_tokens),
+            Some(20)
         );
     }
 
@@ -1967,8 +2217,8 @@ mod tests {
             }
         }
 
-        assert_eq!(output_usages.len(), 1);
-        assert_eq!(output_usages[0]["prompt_tokens"], 13);
+        assert_eq!(output_usages.len(), 2);
+        assert_eq!(output_usages[1]["prompt_tokens"], 13);
         let calls = usage_handler.captured();
         assert_eq!(calls.len(), 1);
         let EndpointUsage::GenerateContent(usage) = &calls[0] else {

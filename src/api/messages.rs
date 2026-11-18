@@ -22,6 +22,7 @@ use crate::provider::{
     UnifiedContentDelta, UnifiedContentPartKind, UnifiedEnding, UnifiedEventKind, UnifiedItemDelta,
     UnifiedOutputItemKind, UnifiedRequest,
 };
+use crate::usage_handler::EndpointUsage;
 use serde_json::json;
 
 /// API request parse failure (HTTP 400).
@@ -794,13 +795,24 @@ fn anthropic_stop_reason(finish: &FinishReason, stop_sequence: Option<&str>) -> 
     reason.to_anthropic().to_string()
 }
 
-fn map_usage_to_anthropic(usage: &crate::usage_handler::EndpointUsage) -> AnthropicUsage {
+fn map_usage_to_anthropic(usage: &EndpointUsage) -> AnthropicUsage {
     let openai = crate::openai_http_mapping::map_usage_to_openai(usage);
-    AnthropicUsage {
+    let mut mapped = AnthropicUsage {
         input_tokens: Some(openai.prompt_tokens),
         output_tokens: Some(openai.completion_tokens),
         ..Default::default()
+    };
+    // Native Messages usage carries prompt-cache reads and writes that the
+    // OpenAI shape folds into `prompt_tokens`, so prefer the native fields.
+    if let EndpointUsage::Messages(messages) = usage {
+        if let Some(input_tokens) = messages.input_tokens {
+            mapped.input_tokens = Some(input_tokens);
+        }
+        mapped.cache_creation_input_tokens = messages.cache_creation_input_tokens;
+        mapped.cache_read_input_tokens = messages.cache_read_input_tokens;
+        mapped.service_tier = messages.service_tier.clone();
     }
+    mapped
 }
 
 // ---------------------------------------------------------------------------
@@ -1689,5 +1701,56 @@ mod tests {
             AnthropicResponseContentBlock::ToolUse { name, input, .. }
                 if name == "shell" && input == &json!({"cmd": "ls"})
         ));
+    }
+
+    #[test]
+    fn messages_usage_keeps_native_cache_fields() {
+        let usage = EndpointUsage::from_endpoint_payload(
+            "/messages",
+            json!({
+                "input_tokens": 11,
+                "output_tokens": 7,
+                "cache_read_input_tokens": 13,
+                "cache_creation_input_tokens": 17,
+                "service_tier": "standard"
+            }),
+        )
+        .expect("messages usage");
+
+        assert_eq!(
+            map_usage_to_anthropic(&usage),
+            AnthropicUsage {
+                input_tokens: Some(11),
+                output_tokens: Some(7),
+                cache_creation_input_tokens: Some(17),
+                cache_read_input_tokens: Some(13),
+                service_tier: Some("standard".to_string()),
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn chat_usage_maps_to_anthropic_fields() {
+        // The OpenAI shape reports cached tokens inside `prompt_tokens`.
+        let usage = EndpointUsage::from_endpoint_payload(
+            "/chat/completions",
+            json!({
+                "prompt_tokens": 15,
+                "completion_tokens": 4,
+                "total_tokens": 19,
+                "prompt_tokens_details": {"cached_tokens": 3}
+            }),
+        )
+        .expect("chat usage");
+
+        assert_eq!(
+            map_usage_to_anthropic(&usage),
+            AnthropicUsage {
+                input_tokens: Some(15),
+                output_tokens: Some(4),
+                ..Default::default()
+            }
+        );
     }
 }

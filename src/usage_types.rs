@@ -23,7 +23,7 @@ pub struct SystemOneUsage {
     pub output_tokens: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MessagesUsage {
     pub input_tokens: Option<i64>,
     pub output_tokens: Option<i64>,
@@ -35,7 +35,7 @@ pub struct MessagesUsage {
     pub server_tool_use: Option<MessagesServerToolUse>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MessagesCacheCreation {
     #[serde(rename = "ephemeral_5m_input_tokens")]
     pub ephemeral_5m_input_tokens: Option<i64>,
@@ -43,13 +43,13 @@ pub struct MessagesCacheCreation {
     pub ephemeral_1h_input_tokens: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MessagesServerToolUse {
     pub web_search_requests: Option<i64>,
     pub web_fetch_requests: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ResponsesUsage {
     pub input_tokens: Option<i64>,
     pub input_tokens_details: Option<ResponsesInputTokensDetails>,
@@ -58,12 +58,12 @@ pub struct ResponsesUsage {
     pub total_tokens: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ResponsesInputTokensDetails {
     pub cached_tokens: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ResponsesOutputTokensDetails {
     pub reasoning_tokens: Option<i64>,
 }

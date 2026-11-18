@@ -8,11 +8,12 @@
 use crate::llm_stream_mapper::OpenAiSseStreamMapper;
 use crate::openai_http_mapping::{map_openai_response, map_usage_to_openai, openai_error_response};
 use crate::provider::{
-    UnifiedCandidate, UnifiedContentPart, UnifiedContentPartKind, UnifiedEnding, UnifiedInputItem,
-    UnifiedInputItemKind, UnifiedMediaSource, UnifiedMessageBoundary, UnifiedRequestOptions,
-    UnifiedResponseStatus, UnifiedRole, UnifiedSourceProtocol, UnifiedTool, UnifiedToolChoice,
-    UnifiedToolKind, UnifiedToolOutput, merge_extensions, output_from_input, parse_role,
-    response_envelope, role_name, source_extensions, value_string,
+    UnifiedCacheControl, UnifiedCandidate, UnifiedContentPart, UnifiedContentPartKind,
+    UnifiedEnding, UnifiedInputItem, UnifiedInputItemKind, UnifiedMediaSource,
+    UnifiedMessageBoundary, UnifiedRequestOptions, UnifiedResponseStatus, UnifiedRole,
+    UnifiedSourceProtocol, UnifiedTool, UnifiedToolChoice, UnifiedToolKind, UnifiedToolOutput,
+    merge_extensions, output_from_input, parse_role, response_envelope, role_name,
+    source_extensions, value_string,
 };
 use crate::provider::{UnifiedRequest, UnifiedResponse};
 use crate::usage_handler::EndpointUsage;
@@ -20,6 +21,18 @@ use axum::http::StatusCode;
 use serde_json::{Value, json};
 
 const PROTOCOL: UnifiedSourceProtocol = UnifiedSourceProtocol::ChatCompletions;
+
+/// IR cache breakpoint carried by an OpenAI-compatible chat request.
+///
+/// `cache_control` is the same hint Anthropic clients send, so dialects that
+/// need explicit cache checkpoints (Bedrock Converse) can place them. The raw
+/// value stays in `source_extensions` as well, so OpenAI-compatible upstreams
+/// still receive the field untouched.
+fn chat_cache_control(value: &Value) -> Option<UnifiedCacheControl> {
+    value
+        .get("cache_control")
+        .map(|cache| UnifiedCacheControl::ChatCompletions(cache.clone()))
+}
 
 pub fn parse_content(value: &Value) -> Result<Vec<UnifiedContentPart>, String> {
     if let Some(text) = value.as_str() {
@@ -72,7 +85,7 @@ pub fn parse_content(value: &Value) -> Result<Vec<UnifiedContentPart>, String> {
             };
             Ok(UnifiedContentPart {
                 kind,
-                cache_control: None,
+                cache_control: chat_cache_control(block),
                 source_extensions: source_extensions(block, &["type", "text"], PROTOCOL),
             })
         })
@@ -156,6 +169,7 @@ pub fn request_from_value(value: &Value) -> Result<UnifiedRequest, String> {
         .enumerate()
     {
         let role = parse_role(message["role"].as_str().ok_or("message requires role")?)?;
+        let message_cache = chat_cache_control(message);
         if role == UnifiedRole::Tool {
             request.input.push(UnifiedInputItem::new(
                 UnifiedInputItemKind::FunctionCallOutput {
@@ -168,7 +182,7 @@ pub fn request_from_value(value: &Value) -> Result<UnifiedRequest, String> {
                         UnifiedToolOutput::Content(parse_content(&message["content"])?)
                     },
                     is_error: None,
-                    cache_control: None,
+                    cache_control: message_cache,
                 },
             ));
             continue;
@@ -201,6 +215,13 @@ pub fn request_from_value(value: &Value) -> Result<UnifiedRequest, String> {
                 source_extensions: None,
             });
         }
+        // A message-level hint marks the end of this message's prefix.
+        if let Some(cache) = message_cache
+            && let Some(last) = content.last_mut()
+            && last.cache_control.is_none()
+        {
+            last.cache_control = Some(cache);
+        }
         let mut item = UnifiedInputItem::new(UnifiedInputItemKind::Message {
             role,
             content,
@@ -226,7 +247,7 @@ pub fn request_from_value(value: &Value) -> Result<UnifiedRequest, String> {
                 name: value_string(&call["function"], "name").ok_or("tool name")?,
                 arguments: value_string(&call["function"], "arguments").unwrap_or_default(),
                 caller: None,
-                cache_control: None,
+                cache_control: chat_cache_control(call),
             });
             item.message = Some(boundary.clone());
             request.input.push(item);
@@ -238,7 +259,8 @@ pub fn request_from_value(value: &Value) -> Result<UnifiedRequest, String> {
             .map(|tool| {
                 let function = &tool["function"];
                 UnifiedTool {
-                    cache_control: None,
+                    cache_control: chat_cache_control(tool)
+                        .or_else(|| chat_cache_control(function)),
                     source_extensions: source_extensions(
                         function,
                         &["name", "description", "parameters", "strict"],
@@ -1045,5 +1067,69 @@ mod golden_tests {
         let value: serde_json::Value = serde_json::from_slice(&payload).expect("value");
         assert_eq!(value["error"]["type"], "invalid_request_error");
         assert_eq!(value["error"]["message"], "boom");
+    }
+
+    fn cache_payload(cache: &UnifiedCacheControl) -> &Value {
+        match cache {
+            UnifiedCacheControl::ChatCompletions(value) => value,
+            other => panic!("expected a chat cache hint, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn request_keeps_cache_control_hints() {
+        let request = request_from_value(&json!({
+            "model": "claude-haiku-5-5",
+            "messages": [
+                {"role": "system", "content": [{"type": "text", "text": "policy", "cache_control": {"type": "ephemeral"}}]},
+                {"role": "user", "content": "hi", "cache_control": {"type": "ephemeral", "ttl": "1h"}},
+                {"role": "assistant", "content": "", "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "shell", "arguments": "{}"}, "cache_control": {"type": "ephemeral"}}]},
+                {"role": "tool", "tool_call_id": "call_1", "content": "ok", "cache_control": {"type": "ephemeral"}}
+            ],
+            "tools": [{"type": "function", "function": {"name": "shell", "description": "run", "parameters": {"type": "object"}}, "cache_control": {"type": "ephemeral"}}]
+        }))
+        .expect("chat request");
+
+        let mut content_hints = Vec::new();
+        let mut call_hints = Vec::new();
+        let mut output_hints = Vec::new();
+        for item in &request.input {
+            match &item.kind {
+                UnifiedInputItemKind::Message { content, .. } => {
+                    for part in content {
+                        if let Some(cache) = &part.cache_control {
+                            content_hints.push(cache_payload(cache).clone());
+                        }
+                    }
+                }
+                UnifiedInputItemKind::FunctionCall { cache_control, .. } => {
+                    if let Some(cache) = cache_control {
+                        call_hints.push(cache_payload(cache).clone());
+                    }
+                }
+                UnifiedInputItemKind::FunctionCallOutput { cache_control, .. } => {
+                    if let Some(cache) = cache_control {
+                        output_hints.push(cache_payload(cache).clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        assert_eq!(
+            content_hints,
+            vec![
+                json!({"type": "ephemeral"}),
+                json!({"type": "ephemeral", "ttl": "1h"})
+            ]
+        );
+        assert_eq!(call_hints, vec![json!({"type": "ephemeral"})]);
+        assert_eq!(output_hints, vec![json!({"type": "ephemeral"})]);
+
+        let tools = request.tools.as_ref().expect("tools");
+        assert_eq!(
+            cache_payload(tools[0].cache_control.as_ref().expect("tool cache hint")),
+            &json!({"type": "ephemeral"})
+        );
     }
 }

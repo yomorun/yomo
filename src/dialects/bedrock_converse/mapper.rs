@@ -4,11 +4,12 @@ use std::collections::HashMap;
 
 use aws_sdk_bedrockruntime::primitives::Blob;
 use aws_sdk_bedrockruntime::types::{
-    AnyToolChoice, AutoToolChoice, ContentBlock, ContentBlockDelta, ConversationRole,
-    InferenceConfiguration, Message as ConverseMessage, ReasoningContentBlock, ReasoningTextBlock,
-    SpecificToolChoice, StopReason, SystemContentBlock, Tool as ConverseTool,
-    ToolChoice as ConverseToolChoice, ToolConfiguration, ToolInputSchema, ToolResultBlock,
-    ToolResultContentBlock, ToolResultStatus, ToolSpecification, ToolUseBlock,
+    AnyToolChoice, AutoToolChoice, CachePointBlock, CachePointType, CacheTtl, ContentBlock,
+    ContentBlockDelta, ConversationRole, InferenceConfiguration, Message as ConverseMessage,
+    ReasoningContentBlock, ReasoningTextBlock, SpecificToolChoice, StopReason, SystemContentBlock,
+    TokenUsage, Tool as ConverseTool, ToolChoice as ConverseToolChoice, ToolConfiguration,
+    ToolInputSchema, ToolResultBlock, ToolResultContentBlock, ToolResultStatus, ToolSpecification,
+    ToolUseBlock,
 };
 use aws_smithy_types::Document;
 use base64::Engine;
@@ -19,15 +20,16 @@ use crate::openai_types::{
 };
 use crate::provider::{FinishReason, ProviderError, ToolCall, UnifiedEvent, UnifiedResponse};
 use crate::provider::{
+    UnifiedCacheControl, UnifiedContentPart, UnifiedContentPartKind, UnifiedInputItemKind,
+    UnifiedMediaSource, UnifiedRequest, UnifiedRole, UnifiedSourceProtocol, UnifiedToolChoice,
+    UnifiedToolKind, UnifiedToolOutput,
+};
+use crate::provider::{
     UnifiedContentDelta, UnifiedEnding, UnifiedEventKind, UnifiedEventTarget, UnifiedItemDelta,
     UnifiedOutputItem, UnifiedOutputItemKind, UnifiedPartLocation, UnifiedUsageUpdate,
 };
-use crate::provider::{
-    UnifiedContentPart, UnifiedContentPartKind, UnifiedInputItemKind, UnifiedMediaSource,
-    UnifiedRequest, UnifiedRole, UnifiedSourceProtocol, UnifiedToolChoice, UnifiedToolKind,
-    UnifiedToolOutput,
-};
 use crate::usage_handler::EndpointUsage;
+use crate::usage_types::{MessagesCacheCreation, MessagesUsage};
 
 // ---------------------------------------------------------------------------
 // IR -> Converse request
@@ -451,6 +453,36 @@ fn is_empty_reasoning_placeholder(
         })
 }
 
+/// Converse cache checkpoint for an IR cache breakpoint.
+///
+/// Anthropic and OpenAI-compatible clients mark the end of a cacheable prefix
+/// with `cache_control`; Converse instead requires an explicit `cachePoint`
+/// element placed right after the marked block. `Responses` breakpoints use the
+/// unrelated `prompt_cache_breakpoint` contract and are ignored, as are unknown
+/// cache types and TTLs (an unrecognized TTL falls back to the default 5m
+/// behavior).
+fn cache_point_block(cache: Option<&UnifiedCacheControl>) -> Option<CachePointBlock> {
+    let value = match cache? {
+        UnifiedCacheControl::Messages(value) | UnifiedCacheControl::ChatCompletions(value) => value,
+        UnifiedCacheControl::Responses(_) => return None,
+    };
+    if value.get("type").and_then(Value::as_str) != Some("ephemeral") {
+        return None;
+    }
+    let ttl = match value.get("ttl").and_then(Value::as_str) {
+        Some("5m") => Some(CacheTtl::FiveMinutes),
+        Some("1h") => Some(CacheTtl::OneHour),
+        _ => None,
+    };
+    Some(
+        CachePointBlock::builder()
+            .r#type(CachePointType::Default)
+            .set_ttl(ttl)
+            .build()
+            .expect("cache point block carries its required type"),
+    )
+}
+
 /// Encode ordered unified items directly, preserving thinking signatures and
 /// interleaved function calls rather than projecting through a Chat request.
 pub fn unified_to_converse_request(
@@ -492,6 +524,11 @@ pub fn unified_to_converse_request(
                     if !text.is_empty() {
                         system.push(SystemContentBlock::Text(text.clone()));
                     }
+                    if !system.is_empty()
+                        && let Some(cache_point) = cache_point_block(part.cache_control.as_ref())
+                    {
+                        system.push(SystemContentBlock::CachePoint(cache_point));
+                    }
                 }
                 continue;
             }
@@ -520,14 +557,18 @@ pub fn unified_to_converse_request(
                                     if part_type == "pending"
                             )
                         })
-                        .map(unified_content_block)
-                        .collect::<Result<Vec<_>, _>>()?,
+                        .map(unified_content_blocks)
+                        .collect::<Result<Vec<_>, _>>()?
+                        .into_iter()
+                        .flatten()
+                        .collect(),
                 )
             }
             UnifiedInputItemKind::FunctionCall {
                 call_id,
                 name,
                 arguments,
+                cache_control,
                 ..
             } => {
                 let input: Value = serde_json::from_str(arguments)
@@ -540,13 +581,14 @@ pub fn unified_to_converse_request(
                     .map_err(|error| error.to_string())?;
                 (
                     ConversationRole::Assistant,
-                    vec![ContentBlock::ToolUse(block)],
+                    block_with_cache_point(ContentBlock::ToolUse(block), cache_control.as_ref()),
                 )
             }
             UnifiedInputItemKind::FunctionCallOutput {
                 call_id,
                 output,
                 is_error,
+                cache_control,
                 ..
             } => {
                 let content = match output {
@@ -587,7 +629,7 @@ pub fn unified_to_converse_request(
                     .map_err(|error| error.to_string())?;
                 (
                     ConversationRole::User,
-                    vec![ContentBlock::ToolResult(block)],
+                    block_with_cache_point(ContentBlock::ToolResult(block), cache_control.as_ref()),
                 )
             }
             _ => return Err("input item cannot be represented".into()),
@@ -637,6 +679,9 @@ pub fn unified_to_converse_request(
             .build()
             .map_err(|error| error.to_string())?;
         tools.push(ConverseTool::ToolSpec(spec));
+        if let Some(cache_point) = cache_point_block(tool.cache_control.as_ref()) {
+            tools.push(ConverseTool::CachePoint(cache_point));
+        }
     }
     let tool_config =
         if tools.is_empty() || matches!(request.tool_choice, Some(UnifiedToolChoice::None)) {
@@ -684,6 +729,26 @@ pub fn unified_to_converse_request(
         inference,
         additional_model_request_fields: None,
     })
+}
+
+/// Append the Converse cache checkpoint that closes the prefix a block marks.
+fn block_with_cache_point(
+    block: ContentBlock,
+    cache: Option<&UnifiedCacheControl>,
+) -> Vec<ContentBlock> {
+    let mut blocks = vec![block];
+    if let Some(cache_point) = cache_point_block(cache) {
+        blocks.push(ContentBlock::CachePoint(cache_point));
+    }
+    blocks
+}
+
+/// Encode one content part, followed by its cache checkpoint when it marks one.
+fn unified_content_blocks(part: &UnifiedContentPart) -> Result<Vec<ContentBlock>, String> {
+    Ok(block_with_cache_point(
+        unified_content_block(part)?,
+        part.cache_control.as_ref(),
+    ))
 }
 
 fn unified_content_block(part: &UnifiedContentPart) -> Result<ContentBlock, String> {
@@ -1024,6 +1089,59 @@ pub(crate) fn document_to_json_value(document: &Document) -> Value {
 // Converse response -> IR
 // ---------------------------------------------------------------------------
 
+/// Build the usage event for a Bedrock Converse response.
+///
+/// The Converse dialect reports Anthropic-native metrics: input and output
+/// tokens plus prompt-cache reads and writes. Usage therefore keeps the
+/// Messages shape, which is also the shape Allegro records and bills, instead of
+/// the OpenAI chat-completions shape that cannot express cache writes.
+pub(super) fn converse_usage_to_endpoint_usage(usage: &TokenUsage) -> EndpointUsage {
+    EndpointUsage::Messages(MessagesUsage {
+        input_tokens: Some(i64::from(usage.input_tokens)),
+        output_tokens: Some(i64::from(usage.output_tokens)),
+        cache_creation_input_tokens: Some(i64::from(usage.cache_write_input_tokens.unwrap_or(0))),
+        cache_read_input_tokens: Some(i64::from(usage.cache_read_input_tokens.unwrap_or(0))),
+        cache_creation: Some(converse_cache_creation(usage)),
+        inference_geo: None,
+        service_tier: None,
+        server_tool_use: None,
+    })
+}
+
+/// Usage for an upstream response that reports no metrics at all.
+pub(super) fn empty_converse_usage() -> EndpointUsage {
+    EndpointUsage::Messages(MessagesUsage {
+        input_tokens: None,
+        output_tokens: None,
+        cache_creation_input_tokens: None,
+        cache_read_input_tokens: None,
+        cache_creation: None,
+        inference_geo: None,
+        service_tier: None,
+        server_tool_use: None,
+    })
+}
+
+/// Cache writes split by TTL, mirroring Anthropic `cache_creation`.
+///
+/// Converse reports the same breakdown as Anthropic ephemeral cache buckets, so
+/// `5m`/`1h` map straight onto `ephemeral_5m_input_tokens`/`ephemeral_1h_input_tokens`.
+fn converse_cache_creation(usage: &TokenUsage) -> MessagesCacheCreation {
+    let mut creation = MessagesCacheCreation {
+        ephemeral_5m_input_tokens: Some(0),
+        ephemeral_1h_input_tokens: Some(0),
+    };
+    for detail in usage.cache_details() {
+        let tokens = Some(i64::from(detail.input_tokens()));
+        match detail.ttl() {
+            CacheTtl::FiveMinutes => creation.ephemeral_5m_input_tokens = tokens,
+            CacheTtl::OneHour => creation.ephemeral_1h_input_tokens = tokens,
+            _ => {}
+        }
+    }
+    creation
+}
+
 pub(super) fn converse_output_to_unified(
     output: aws_sdk_bedrockruntime::operation::converse::ConverseOutput,
     model: &str,
@@ -1059,22 +1177,9 @@ pub(super) fn converse_output_to_unified(
     let finish_reason = converse_stop_reason_to_finish(output.stop_reason.as_str());
     let usage = output
         .usage
-        .map(|usage| {
-            EndpointUsage::from_endpoint_payload(
-                "/chat/completions",
-                serde_json::json!({
-                    "prompt_tokens": usage.input_tokens,
-                    "completion_tokens": usage.output_tokens,
-                    "total_tokens": usage.total_tokens,
-                }),
-            )
-        })
-        .transpose()
-        .map_err(ProviderError::internal)?
-        .unwrap_or_else(|| {
-            EndpointUsage::from_endpoint_payload("/chat/completions", serde_json::json!({}))
-                .expect("empty chat usage payload parses")
-        });
+        .as_ref()
+        .map(converse_usage_to_endpoint_usage)
+        .unwrap_or_else(empty_converse_usage);
 
     let request_id = format!(
         "bedrock-{}",
@@ -1374,21 +1479,12 @@ impl ConverseStreamState {
                 ));
             }
             StreamEvent::Metadata(metadata) => {
-                if let Some(usage) = metadata.usage {
-                    if let Ok(usage) = EndpointUsage::from_endpoint_payload(
-                        "/chat/completions",
-                        serde_json::json!({
-                            "prompt_tokens": usage.input_tokens,
-                            "completion_tokens": usage.output_tokens,
-                            "total_tokens": usage.total_tokens,
-                        }),
-                    ) {
-                        out.push(UnifiedEvent::new(UnifiedEventKind::Usage {
-                            usage,
-                            update: UnifiedUsageUpdate::Snapshot,
-                            source_usage: None,
-                        }));
-                    }
+                if let Some(usage) = metadata.usage.as_ref() {
+                    out.push(UnifiedEvent::new(UnifiedEventKind::Usage {
+                        usage: converse_usage_to_endpoint_usage(usage),
+                        update: UnifiedUsageUpdate::Snapshot,
+                        source_usage: None,
+                    }));
                 }
             }
             _ => {}
@@ -1416,6 +1512,7 @@ mod tests {
     use super::*;
     use crate::provider::{
         UnifiedInputItem, UnifiedMessageBoundary, UnifiedSourceExtensions, UnifiedSourceProtocol,
+        UnifiedTool,
     };
 
     #[test]
@@ -1916,8 +2013,8 @@ mod tests {
     }
     use crate::openai_types::Message;
     use aws_sdk_bedrockruntime::types::{
-        ContentBlockDeltaEvent, ContentBlockStartEvent, ContentBlockStopEvent, ConverseOutput,
-        ConverseStreamMetadataEvent, ConverseStreamOutput, MessageStopEvent,
+        CacheDetail, ContentBlockDeltaEvent, ContentBlockStartEvent, ContentBlockStopEvent,
+        ConverseOutput, ConverseStreamMetadataEvent, ConverseStreamOutput, MessageStopEvent,
         ReasoningContentBlockDelta, TokenUsage, ToolUseBlockDelta,
     };
     use serde_json::json;
@@ -2248,6 +2345,8 @@ mod tests {
                         .input_tokens(10)
                         .output_tokens(5)
                         .total_tokens(15)
+                        .cache_read_input_tokens(3)
+                        .cache_write_input_tokens(2)
                         .build()
                         .expect("token usage"),
                 )
@@ -2255,7 +2354,16 @@ mod tests {
         ));
         assert!(matches!(
             &events[0].kind,
-            UnifiedEventKind::Usage { usage, .. } if matches!(usage, EndpointUsage::ChatCompletions(_))
+            UnifiedEventKind::Usage { usage, .. } if matches!(
+                usage,
+                EndpointUsage::Messages(MessagesUsage {
+                    input_tokens: Some(10),
+                    output_tokens: Some(5),
+                    cache_read_input_tokens: Some(3),
+                    cache_creation_input_tokens: Some(2),
+                    ..
+                })
+            )
         ));
 
         // stream end → CandidateDone then exactly one Completed
@@ -2392,9 +2500,240 @@ mod tests {
         assert_eq!(calls[0].function.name, "shell");
         assert_eq!(calls[0].function.arguments, r#"{"cmd":"ls"}"#);
         assert_eq!(chat.choices[0].finish_reason.as_deref(), Some("tool_calls"));
-        assert!(matches!(
-            unified.usage,
-            Some(EndpointUsage::ChatCompletions(_))
+        assert!(matches!(unified.usage, Some(EndpointUsage::Messages(_))));
+    }
+
+    #[test]
+    fn converse_usage_keeps_anthropic_cache_buckets() {
+        let usage = TokenUsage::builder()
+            .input_tokens(11)
+            .output_tokens(7)
+            .total_tokens(18)
+            .cache_read_input_tokens(13)
+            .cache_write_input_tokens(17)
+            .cache_details(
+                CacheDetail::builder()
+                    .ttl(CacheTtl::FiveMinutes)
+                    .input_tokens(5)
+                    .build()
+                    .expect("5m cache detail"),
+            )
+            .cache_details(
+                CacheDetail::builder()
+                    .ttl(CacheTtl::OneHour)
+                    .input_tokens(12)
+                    .build()
+                    .expect("1h cache detail"),
+            )
+            .build()
+            .expect("token usage");
+
+        let EndpointUsage::Messages(messages) = converse_usage_to_endpoint_usage(&usage) else {
+            panic!("converse usage must keep the messages shape");
+        };
+        assert_eq!(messages.input_tokens, Some(11));
+        assert_eq!(messages.output_tokens, Some(7));
+        assert_eq!(messages.cache_read_input_tokens, Some(13));
+        assert_eq!(messages.cache_creation_input_tokens, Some(17));
+        let cache_creation = messages
+            .cache_creation
+            .as_ref()
+            .expect("cache creation buckets");
+        assert_eq!(cache_creation.ephemeral_5m_input_tokens, Some(5));
+        assert_eq!(cache_creation.ephemeral_1h_input_tokens, Some(12));
+        assert_eq!(
+            serde_json::to_value(EndpointUsage::Messages(messages)).expect("serialize usage"),
+            json!({
+                "type": "messages",
+                "payload": {
+                    "input_tokens": 11,
+                    "output_tokens": 7,
+                    "cache_creation_input_tokens": 17,
+                    "cache_read_input_tokens": 13,
+                    "cache_creation": {
+                        "ephemeral_5m_input_tokens": 5,
+                        "ephemeral_1h_input_tokens": 12
+                    },
+                    "inference_geo": null,
+                    "service_tier": null,
+                    "server_tool_use": null
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn converse_usage_without_cache_metrics_defaults_cache_buckets_to_zero() {
+        let usage = TokenUsage::builder()
+            .input_tokens(4)
+            .output_tokens(2)
+            .total_tokens(6)
+            .build()
+            .expect("token usage");
+
+        let EndpointUsage::Messages(messages) = converse_usage_to_endpoint_usage(&usage) else {
+            panic!("converse usage must keep the messages shape");
+        };
+        assert_eq!(messages.cache_read_input_tokens, Some(0));
+        assert_eq!(messages.cache_creation_input_tokens, Some(0));
+        let cache_creation = messages.cache_creation.expect("cache creation buckets");
+        assert_eq!(cache_creation.ephemeral_5m_input_tokens, Some(0));
+        assert_eq!(cache_creation.ephemeral_1h_input_tokens, Some(0));
+    }
+
+    #[test]
+    fn empty_converse_usage_reports_no_quantities() {
+        let EndpointUsage::Messages(messages) = empty_converse_usage() else {
+            panic!("empty converse usage must keep the messages shape");
+        };
+        assert!(
+            crate::usage_handler::flatten_usage_quantities_for_usage(&EndpointUsage::Messages(
+                messages
+            ))
+            .is_empty()
+        );
+    }
+
+    /// Content part that marks the end of a cacheable prefix.
+    fn cached_text(text: &str, cache: Value) -> UnifiedContentPart {
+        UnifiedContentPart {
+            cache_control: Some(UnifiedCacheControl::Messages(cache)),
+            ..UnifiedContentPart::text(text.to_string())
+        }
+    }
+
+    fn cache_point_ttl(block: &ContentBlock) -> Option<CacheTtl> {
+        let ContentBlock::CachePoint(point) = block else {
+            panic!("expected a cache point block");
+        };
+        point.ttl().cloned()
+    }
+
+    #[test]
+    fn converse_request_places_cache_points_after_marked_blocks() {
+        let mut request = UnifiedRequest::default();
+        request.instructions = Some(vec![UnifiedInputItem::new(UnifiedInputItemKind::Message {
+            role: UnifiedRole::System,
+            content: vec![
+                UnifiedContentPart::text("policy".to_string()),
+                cached_text("long context", json!({"type": "ephemeral", "ttl": "1h"})),
+            ],
+            phase: None,
+        })]);
+        request
+            .input
+            .push(UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                role: UnifiedRole::User,
+                content: vec![cached_text("hi", json!({"type": "ephemeral"}))],
+                phase: None,
+            }));
+        request
+            .input
+            .push(UnifiedInputItem::new(UnifiedInputItemKind::FunctionCall {
+                call_id: "call_1".to_string(),
+                name: "shell".to_string(),
+                arguments: json!({"cmd": "ls"}).to_string(),
+                caller: None,
+                cache_control: Some(UnifiedCacheControl::ChatCompletions(
+                    json!({"type": "ephemeral", "ttl": "5m"}),
+                )),
+            }));
+        request.input.push(UnifiedInputItem::new(
+            UnifiedInputItemKind::FunctionCallOutput {
+                call_id: "call_1".to_string(),
+                output: UnifiedToolOutput::Text("listing".to_string()),
+                is_error: None,
+                cache_control: Some(UnifiedCacheControl::Messages(json!({"type": "ephemeral"}))),
+            },
         ));
+        request.tools = Some(vec![UnifiedTool {
+            cache_control: Some(UnifiedCacheControl::Messages(json!({"type": "ephemeral"}))),
+            source_extensions: None,
+            kind: UnifiedToolKind::Function {
+                name: "shell".to_string(),
+                description: Some("run a command".to_string()),
+                parameters: json!({"type": "object"}),
+                strict: None,
+                allowed_callers: None,
+            },
+        }]);
+
+        let parts = unified_to_converse_request(&request).expect("converse request");
+
+        let system = parts.system.expect("system blocks");
+        assert_eq!(system.len(), 3);
+        assert!(matches!(&system[0], SystemContentBlock::Text(text) if text == "policy"));
+        assert!(matches!(&system[1], SystemContentBlock::Text(text) if text == "long context"));
+        let SystemContentBlock::CachePoint(point) = &system[2] else {
+            panic!("system cache point must follow the marked text");
+        };
+        assert_eq!(point.ttl(), Some(&CacheTtl::OneHour));
+
+        assert_eq!(parts.messages.len(), 3);
+        let user = parts.messages[0].content();
+        assert!(matches!(&user[0], ContentBlock::Text(text) if text == "hi"));
+        assert_eq!(cache_point_ttl(&user[1]), None);
+
+        let assistant = parts.messages[1].content();
+        assert!(matches!(&assistant[0], ContentBlock::ToolUse(_)));
+        assert_eq!(cache_point_ttl(&assistant[1]), Some(CacheTtl::FiveMinutes));
+
+        let tool_result = parts.messages[2].content();
+        assert!(matches!(&tool_result[0], ContentBlock::ToolResult(_)));
+        assert_eq!(cache_point_ttl(&tool_result[1]), None);
+
+        let tools = parts.tool_config.expect("tool config").tools;
+        assert_eq!(tools.len(), 2);
+        assert!(matches!(&tools[0], ConverseTool::ToolSpec(_)));
+        assert!(matches!(&tools[1], ConverseTool::CachePoint(_)));
+    }
+
+    #[test]
+    fn converse_request_without_cache_control_has_no_cache_points() {
+        let mut request = UnifiedRequest::default();
+        request.instructions = Some(vec![UnifiedInputItem::new(UnifiedInputItemKind::Message {
+            role: UnifiedRole::System,
+            content: vec![UnifiedContentPart::text("policy".to_string())],
+            phase: None,
+        })]);
+        request
+            .input
+            .push(UnifiedInputItem::new(UnifiedInputItemKind::Message {
+                role: UnifiedRole::User,
+                content: vec![UnifiedContentPart::text("hi".to_string())],
+                phase: None,
+            }));
+        request.tools = Some(vec![UnifiedTool {
+            cache_control: None,
+            source_extensions: None,
+            kind: UnifiedToolKind::Function {
+                name: "shell".to_string(),
+                description: None,
+                parameters: json!({"type": "object"}),
+                strict: None,
+                allowed_callers: None,
+            },
+        }]);
+
+        let parts = unified_to_converse_request(&request).expect("converse request");
+
+        let system = parts.system.expect("system blocks");
+        assert!(
+            system
+                .iter()
+                .all(|block| matches!(block, SystemContentBlock::Text(_)))
+        );
+        assert!(parts.messages.iter().all(|message| {
+            message
+                .content()
+                .iter()
+                .all(|block| !matches!(block, ContentBlock::CachePoint(_)))
+        }));
+        let tools = parts.tool_config.expect("tool config").tools;
+        assert!(
+            tools
+                .iter()
+                .all(|tool| matches!(tool, ConverseTool::ToolSpec(_)))
+        );
     }
 }

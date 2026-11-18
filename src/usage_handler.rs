@@ -219,6 +219,17 @@ impl EndpointUsage {
             }
         }
     }
+
+    /// Total tokens in the OpenAI accounting sense, used for request limits.
+    pub fn total_tokens(&self) -> i64 {
+        match self {
+            Self::ChatCompletions(usage) => usage.total_tokens,
+            other => other
+                .to_openai_usage()
+                .map(|usage| usage.total_tokens)
+                .unwrap_or(0),
+        }
+    }
 }
 
 pub fn flatten_usage_quantities_for_usage(usage: &EndpointUsage) -> Vec<(String, i64)> {
@@ -341,8 +352,70 @@ fn quantity_from_json_number(number: &serde_json::Number) -> Option<i64> {
     Some(rounded as i64)
 }
 
-pub(crate) fn aggregate_to_openai(endpoint: &str, usages: &[Value]) -> OpenAIUsage {
-    let mut total = OpenAIUsage {
+/// Sum one request's per-round usages into a single usage value.
+///
+/// The native shape is kept when every round reports the same one, so
+/// protocol-specific quantities such as Anthropic prompt-cache reads and writes
+/// survive aggregation. Mixed or unsupported histories fall back to the OpenAI
+/// shape, which every client API can serialize.
+pub fn aggregate_endpoint_usages(usages: &[EndpointUsage]) -> EndpointUsage {
+    if !usages.is_empty() {
+        if usages
+            .iter()
+            .all(|usage| matches!(usage, EndpointUsage::Messages(_)))
+        {
+            let mut total = MessagesUsage::default();
+            for usage in usages {
+                let EndpointUsage::Messages(usage) = usage else {
+                    unreachable!("all rounds report messages usage");
+                };
+                accumulate_messages_usage(&mut total, usage);
+            }
+            return EndpointUsage::Messages(total);
+        }
+        if usages
+            .iter()
+            .all(|usage| matches!(usage, EndpointUsage::Responses(_)))
+        {
+            let mut total = ResponsesUsage::default();
+            for usage in usages {
+                let EndpointUsage::Responses(usage) = usage else {
+                    unreachable!("all rounds report responses usage");
+                };
+                accumulate_responses_usage(&mut total, usage);
+            }
+            return EndpointUsage::Responses(total);
+        }
+        if usages
+            .iter()
+            .all(|usage| matches!(usage, EndpointUsage::ChatCompletions(_)))
+        {
+            let mut total = openai_usage_zero();
+            for usage in usages {
+                let EndpointUsage::ChatCompletions(usage) = usage else {
+                    unreachable!("all rounds report chat completions usage");
+                };
+                accumulate_openai_usage(&mut total, usage);
+            }
+            return EndpointUsage::ChatCompletions(total);
+        }
+    }
+
+    let mut total = openai_usage_zero();
+    for usage in usages {
+        match usage.to_openai_usage() {
+            Some(usage) => accumulate_openai_usage(&mut total, &usage),
+            None => warn!(
+                "unsupported usage for aggregation; payload={}",
+                format_payload_for_log(&usage.raw_payload())
+            ),
+        }
+    }
+    EndpointUsage::ChatCompletions(total)
+}
+
+fn openai_usage_zero() -> OpenAIUsage {
+    OpenAIUsage {
         prompt_tokens: 0,
         completion_tokens: 0,
         total_tokens: 0,
@@ -356,7 +429,85 @@ pub(crate) fn aggregate_to_openai(endpoint: &str, usages: &[Value]) -> OpenAIUsa
             reasoning_tokens: 0,
             rejected_prediction_tokens: 0,
         }),
-    };
+    }
+}
+
+/// Sum an optional quantity, keeping `None` only while every round omits it.
+fn sum_quantity(total: Option<i64>, round: Option<i64>) -> Option<i64> {
+    match (total, round) {
+        (None, None) => None,
+        (total, round) => Some(total.unwrap_or(0).saturating_add(round.unwrap_or(0))),
+    }
+}
+
+fn accumulate_messages_usage(total: &mut MessagesUsage, usage: &MessagesUsage) {
+    total.input_tokens = sum_quantity(total.input_tokens, usage.input_tokens);
+    total.output_tokens = sum_quantity(total.output_tokens, usage.output_tokens);
+    total.cache_creation_input_tokens = sum_quantity(
+        total.cache_creation_input_tokens,
+        usage.cache_creation_input_tokens,
+    );
+    total.cache_read_input_tokens =
+        sum_quantity(total.cache_read_input_tokens, usage.cache_read_input_tokens);
+
+    let mut cache_creation = total.cache_creation.take().unwrap_or_default();
+    if let Some(round) = usage.cache_creation.as_ref() {
+        cache_creation.ephemeral_5m_input_tokens = sum_quantity(
+            cache_creation.ephemeral_5m_input_tokens,
+            round.ephemeral_5m_input_tokens,
+        );
+        cache_creation.ephemeral_1h_input_tokens = sum_quantity(
+            cache_creation.ephemeral_1h_input_tokens,
+            round.ephemeral_1h_input_tokens,
+        );
+    }
+    if cache_creation.ephemeral_5m_input_tokens.is_some()
+        || cache_creation.ephemeral_1h_input_tokens.is_some()
+    {
+        total.cache_creation = Some(cache_creation);
+    }
+
+    let mut server_tool_use = total.server_tool_use.take().unwrap_or_default();
+    if let Some(round) = usage.server_tool_use.as_ref() {
+        server_tool_use.web_search_requests = sum_quantity(
+            server_tool_use.web_search_requests,
+            round.web_search_requests,
+        );
+        server_tool_use.web_fetch_requests =
+            sum_quantity(server_tool_use.web_fetch_requests, round.web_fetch_requests);
+        total.server_tool_use = Some(server_tool_use);
+    }
+
+    if total.inference_geo.is_none() {
+        total.inference_geo = usage.inference_geo.clone();
+    }
+    if total.service_tier.is_none() {
+        total.service_tier = usage.service_tier.clone();
+    }
+}
+
+fn accumulate_responses_usage(total: &mut ResponsesUsage, usage: &ResponsesUsage) {
+    total.input_tokens = sum_quantity(total.input_tokens, usage.input_tokens);
+    total.output_tokens = sum_quantity(total.output_tokens, usage.output_tokens);
+    total.total_tokens = sum_quantity(total.total_tokens, usage.total_tokens);
+
+    let mut input_details = total.input_tokens_details.take().unwrap_or_default();
+    if let Some(round) = usage.input_tokens_details.as_ref() {
+        input_details.cached_tokens =
+            sum_quantity(input_details.cached_tokens, round.cached_tokens);
+        total.input_tokens_details = Some(input_details);
+    }
+
+    let mut output_details = total.output_tokens_details.take().unwrap_or_default();
+    if let Some(round) = usage.output_tokens_details.as_ref() {
+        output_details.reasoning_tokens =
+            sum_quantity(output_details.reasoning_tokens, round.reasoning_tokens);
+        total.output_tokens_details = Some(output_details);
+    }
+}
+
+pub(crate) fn aggregate_to_openai(endpoint: &str, usages: &[Value]) -> OpenAIUsage {
+    let mut total = openai_usage_zero();
 
     for payload in usages {
         if payload.is_null() {
@@ -732,5 +883,89 @@ mod tests {
                 .map(|details| details.reasoning_tokens),
             Some(4)
         );
+    }
+
+    #[test]
+    fn aggregate_endpoint_usages_keeps_messages_shape_and_cache_buckets() {
+        let round = |input: i64, read: i64, creation: i64| {
+            EndpointUsage::from_endpoint_payload(
+                "/messages",
+                serde_json::json!({
+                    "input_tokens": input,
+                    "output_tokens": 4,
+                    "cache_read_input_tokens": read,
+                    "cache_creation_input_tokens": creation,
+                    "cache_creation": {"ephemeral_5m_input_tokens": creation},
+                }),
+            )
+            .expect("messages usage")
+        };
+
+        let total = super::aggregate_endpoint_usages(&[round(10, 100, 20), round(5, 7, 3)]);
+        let EndpointUsage::Messages(usage) = total else {
+            panic!("messages rounds must aggregate to the messages shape");
+        };
+        assert_eq!(usage.input_tokens, Some(15));
+        assert_eq!(usage.output_tokens, Some(8));
+        assert_eq!(usage.cache_read_input_tokens, Some(107));
+        assert_eq!(usage.cache_creation_input_tokens, Some(23));
+        assert_eq!(
+            usage
+                .cache_creation
+                .as_ref()
+                .and_then(|cache| cache.ephemeral_5m_input_tokens),
+            Some(23)
+        );
+    }
+
+    #[test]
+    fn aggregate_endpoint_usages_falls_back_to_openai_for_mixed_rounds() {
+        let chat = EndpointUsage::from_endpoint_payload(
+            "/chat/completions",
+            serde_json::json!({"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}),
+        )
+        .expect("chat usage");
+        let messages = EndpointUsage::from_endpoint_payload(
+            "/messages",
+            serde_json::json!({
+                "input_tokens": 3,
+                "output_tokens": 4,
+                "cache_read_input_tokens": 100,
+                "cache_creation_input_tokens": 20,
+            }),
+        )
+        .expect("messages usage");
+
+        let total = super::aggregate_endpoint_usages(&[chat, messages]);
+        let EndpointUsage::ChatCompletions(usage) = total else {
+            panic!("mixed rounds must fall back to the chat completions shape");
+        };
+        assert_eq!(usage.prompt_tokens, 133);
+        assert_eq!(usage.completion_tokens, 6);
+        assert_eq!(usage.total_tokens, 139);
+    }
+
+    #[test]
+    fn aggregate_endpoint_usages_of_nothing_is_zero_chat_usage() {
+        let total = super::aggregate_endpoint_usages(&[]);
+        let EndpointUsage::ChatCompletions(usage) = total else {
+            panic!("empty history must aggregate to the chat completions shape");
+        };
+        assert_eq!(usage.total_tokens, 0);
+    }
+
+    #[test]
+    fn total_tokens_matches_openai_accounting() {
+        let messages = EndpointUsage::from_endpoint_payload(
+            "/messages",
+            serde_json::json!({
+                "input_tokens": 3,
+                "output_tokens": 4,
+                "cache_read_input_tokens": 100,
+                "cache_creation_input_tokens": 20,
+            }),
+        )
+        .expect("messages usage");
+        assert_eq!(messages.total_tokens(), 127);
     }
 }
