@@ -61,6 +61,8 @@ pub mod gemini_4_argon;
 pub mod claude_fable_5;
 /// Claude Fable 5.1 profile.
 pub mod claude_fable_5_1;
+/// Claude Fable 5.2 profile.
+pub mod claude_fable_5_2;
 /// Claude Haiku 4.5 profile.
 pub mod claude_haiku_4_5;
 /// Claude Haiku 5.5 profile.
@@ -314,6 +316,8 @@ impl ModelProfileRegistry {
         );
         profiles.insert("gpt-6.1-sol".to_owned(), Arc::new(gpt_6_1_sol::PROFILE));
         profiles.insert("gpt-6.1-terra".to_owned(), Arc::new(gpt_6_1_terra::PROFILE));
+        profiles.insert("gpt-6.2-astra".to_owned(), Arc::new(gpt_6_astra::PROFILE));
+        profiles.insert("gpt-6.2-sol".to_owned(), Arc::new(gpt_6_1_sol::PROFILE));
         let gemini_38_flash: Arc<dyn ModelProfile> =
             Arc::new(gemini_3_8_flash::Gemini38FlashProfile);
         for public_model in [
@@ -332,7 +336,7 @@ impl ModelProfileRegistry {
             "gemini-4-argon".to_owned(),
             Arc::new(gemini_4_argon::Gemini4ArgonProfile),
         );
-        let claude_profiles: [(&str, Arc<dyn ModelProfile>); 12] = [
+        let claude_profiles: [(&str, Arc<dyn ModelProfile>); 13] = [
             (
                 "claude-fable-5",
                 Arc::new(claude_fable_5::ClaudeFable5Profile),
@@ -340,6 +344,10 @@ impl ModelProfileRegistry {
             (
                 "claude-fable-5-1",
                 Arc::new(claude_fable_5_1::ClaudeFable51Profile),
+            ),
+            (
+                "claude-fable-5-2",
+                Arc::new(claude_fable_5_2::ClaudeFable52Profile),
             ),
             (
                 "claude-haiku-4-5",
@@ -728,6 +736,8 @@ mod tests {
             ("gpt-6-luna", true),
             ("gpt-6.1-sol", false),
             ("gpt-6.1-terra", true),
+            ("gpt-6.2-astra", false),
+            ("gpt-6.2-sol", false),
         ];
 
         for (public_model, supports_none) in models {
@@ -1372,6 +1382,7 @@ mod tests {
         for model in [
             "claude-fable-5",
             "claude-fable-5-1",
+            "claude-fable-5-2",
             "claude-opus-5",
             "claude-opus-5-5",
             "claude-sonnet-5",
@@ -1445,9 +1456,9 @@ mod tests {
     }
 
     #[test]
-    fn claude_profiles_ignore_block_binding_policy() {
+    fn claude_profiles_preserve_block_binding_for_dialect_normalization() {
         let profiles = ModelProfileRegistry::default();
-        for model in ["claude-opus-5", "claude-haiku-5-5"] {
+        for model in ["claude-fable-5-2", "claude-opus-5", "claude-haiku-5-5"] {
             let mut request = UnifiedRequest::default();
             request.options.thinking = Some(json!({
                 "type": "adaptive",
@@ -1458,8 +1469,11 @@ mod tests {
 
             assert_eq!(
                 request.options.thinking,
-                Some(json!({"type":"adaptive"})),
-                "{model} drops the unsupported binding policy"
+                Some(json!({
+                    "type":"adaptive",
+                    "block_binding":{"prefix_mismatch_behavior":"drop_block"}
+                })),
+                "{model} leaves model capability handling to the Bedrock dialect"
             );
         }
     }
@@ -1503,7 +1517,12 @@ mod tests {
     #[test]
     fn claude_disabled_thinking_respects_each_route() {
         let profiles = ModelProfileRegistry::default();
-        for model in ["claude-fable-5", "claude-fable-5-1", "claude-opus-5-5"] {
+        for model in [
+            "claude-fable-5",
+            "claude-fable-5-1",
+            "claude-fable-5-2",
+            "claude-opus-5-5",
+        ] {
             let mut request = UnifiedRequest::default();
             request.options.thinking = Some(json!({"type":"disabled"}));
             assert!(
@@ -1552,7 +1571,12 @@ mod tests {
     #[test]
     fn claude_forced_tool_choice_is_rejected_only_where_unsupported() {
         let profiles = ModelProfileRegistry::default();
-        for model in ["claude-opus-5-5", "claude-fable-5-1", "claude-sonnet-5-5"] {
+        for model in [
+            "claude-opus-5-5",
+            "claude-fable-5-1",
+            "claude-fable-5-2",
+            "claude-sonnet-5-5",
+        ] {
             let mut request = UnifiedRequest::default();
             request.options.thinking = Some(json!({"type":"adaptive"}));
             request.tool_choice = Some(UnifiedToolChoice::Function("lookup".into()));

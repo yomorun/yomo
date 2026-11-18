@@ -24,7 +24,8 @@ use crate::provider::{
 };
 use crate::provider::{
     UnifiedContentPart, UnifiedContentPartKind, UnifiedInputItemKind, UnifiedMediaSource,
-    UnifiedRequest, UnifiedRole, UnifiedToolChoice, UnifiedToolKind, UnifiedToolOutput,
+    UnifiedRequest, UnifiedRole, UnifiedSourceProtocol, UnifiedToolChoice, UnifiedToolKind,
+    UnifiedToolOutput,
 };
 use crate::usage_handler::EndpointUsage;
 
@@ -324,11 +325,22 @@ fn text_value(value: &Value, key: &str) -> Option<String> {
     value.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
+const BEDROCK_THINKING_BLOCK_BINDING_BETA: &str = "thinking-binding-controls-2026-08-01";
+const BEDROCK_THINKING_BLOCK_BINDING_MODELS: [&str; 7] = [
+    "claude-fable-5-1",
+    "claude-fable-5-2",
+    "claude-haiku-5-5",
+    "claude-mythos-5-1",
+    "claude-mythos-5-2",
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+];
+
 /// Build generic Claude extension fields for models without a profile.
 ///
 /// Registered Claude profiles normalize thinking modes, effort, and sampling
 /// before this point; unregistered Claude models pass their reasoning controls
-/// through unchanged and let the upstream decide what it supports.
+/// through unchanged except for Bedrock's model-scoped thinking block binding.
 pub fn additional_model_request_fields(
     request: &UnifiedRequest,
     bedrock_model: &str,
@@ -336,10 +348,13 @@ pub fn additional_model_request_fields(
     if !bedrock_model.to_ascii_lowercase().contains("claude") {
         return Ok(None);
     }
-    passthrough_claude_fields(request)
+    passthrough_claude_fields(request, bedrock_model)
 }
 
-fn passthrough_claude_fields(request: &UnifiedRequest) -> Result<Option<Document>, String> {
+fn passthrough_claude_fields(
+    request: &UnifiedRequest,
+    bedrock_model: &str,
+) -> Result<Option<Document>, String> {
     let mut fields = Map::new();
     if let Some(effort) = request
         .options
@@ -354,10 +369,57 @@ fn passthrough_claude_fields(request: &UnifiedRequest) -> Result<Option<Document
     {
         fields.insert("output_config".into(), json!({"effort": effort}));
     }
+    if let Some(betas) = request
+        .source_extensions
+        .as_ref()
+        .filter(|extensions| extensions.protocol == UnifiedSourceProtocol::Messages)
+        .and_then(|extensions| extensions.fields.get("anthropic_beta"))
+    {
+        fields.insert("anthropic_beta".into(), betas.clone());
+    }
     if let Some(thinking) = &request.options.thinking {
-        fields.insert("thinking".into(), thinking.clone());
+        let mut thinking = thinking.clone();
+        let add_binding_beta =
+            normalize_bedrock_thinking_block_binding(&mut thinking, bedrock_model);
+        fields.insert("thinking".into(), thinking);
+        if add_binding_beta {
+            let betas = fields
+                .entry("anthropic_beta")
+                .or_insert_with(|| Value::Array(Vec::new()));
+            if let Some(betas) = betas.as_array_mut()
+                && !betas
+                    .iter()
+                    .any(|beta| beta.as_str() == Some(BEDROCK_THINKING_BLOCK_BINDING_BETA))
+            {
+                betas.push(Value::String(
+                    BEDROCK_THINKING_BLOCK_BINDING_BETA.to_owned(),
+                ));
+            }
+        }
     }
     claude_fields_to_document(fields)
+}
+
+/// Preserve `thinking.block_binding` only for Bedrock models that accept the
+/// beta; return true when the required beta must be present upstream.
+fn normalize_bedrock_thinking_block_binding(thinking: &mut Value, bedrock_model: &str) -> bool {
+    let Some(fields) = thinking.as_object_mut() else {
+        return false;
+    };
+    if !fields.contains_key("block_binding") {
+        return false;
+    }
+
+    let model_name = bedrock_model.rsplit('.').next().unwrap_or(bedrock_model);
+    let supported = BEDROCK_THINKING_BLOCK_BINDING_MODELS.contains(&model_name)
+        && (!matches!(model_name, "claude-haiku-5-5" | "claude-sonnet-5-5")
+            || fields.get("type").and_then(Value::as_str) == Some("adaptive"));
+    if supported {
+        return true;
+    }
+
+    fields.remove("block_binding");
+    false
 }
 
 fn claude_fields_to_document(fields: Map<String, Value>) -> Result<Option<Document>, String> {
@@ -1349,11 +1411,15 @@ impl FinishReason {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
-    use crate::provider::{UnifiedInputItem, UnifiedMessageBoundary};
+    use crate::provider::{
+        UnifiedInputItem, UnifiedMessageBoundary, UnifiedSourceExtensions, UnifiedSourceProtocol,
+    };
 
     #[test]
-    fn unmapped_claude_routes_pass_reasoning_controls_through() {
+    fn unmapped_claude_routes_strip_unsupported_binding_but_pass_other_controls() {
         let mut request = UnifiedRequest::default();
         request.options.reasoning_effort = Some("ultra".into());
         request.options.thinking = Some(json!({
@@ -1371,8 +1437,7 @@ mod tests {
                 "thinking": {
                     "type": "enabled",
                     "budget_tokens": 512,
-                    "display": "updates",
-                    "block_binding": {"prefix_mismatch_behavior": "error"}
+                    "display": "updates"
                 },
                 "output_config": {"effort": "ultra"}
             })
@@ -1384,6 +1449,101 @@ mod tests {
                 .expect("nothing to forward")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn supported_models_receive_the_binding_beta() {
+        for model in BEDROCK_THINKING_BLOCK_BINDING_MODELS {
+            let mut request = UnifiedRequest::default();
+            request.options.thinking = Some(json!({
+                "type": "adaptive",
+                "block_binding": {"prefix_mismatch_behavior": "drop_block"}
+            }));
+
+            let fields =
+                additional_model_request_fields(&request, &format!("global.anthropic.{model}"))
+                    .expect("supported model should convert")
+                    .expect("Claude request should contain model extension fields");
+
+            assert_eq!(
+                document_to_json_value(&fields),
+                json!({
+                    "anthropic_beta": [BEDROCK_THINKING_BLOCK_BINDING_BETA],
+                    "thinking": {
+                        "type": "adaptive",
+                        "block_binding": {"prefix_mismatch_behavior": "drop_block"}
+                    }
+                }),
+                "{model} should receive the Bedrock beta"
+            );
+        }
+    }
+
+    #[test]
+    fn existing_anthropic_betas_are_preserved_and_binding_beta_is_deduplicated() {
+        let mut request = UnifiedRequest::default();
+        request.source_extensions = Some(UnifiedSourceExtensions {
+            protocol: UnifiedSourceProtocol::Messages,
+            fields: HashMap::from([(
+                "anthropic_beta".to_owned(),
+                json!([
+                    "interleaved-thinking-2025-05-14",
+                    BEDROCK_THINKING_BLOCK_BINDING_BETA
+                ]),
+            )]),
+        });
+        request.options.thinking = Some(json!({
+            "type": "adaptive",
+            "block_binding": {"prefix_mismatch_behavior": "drop_block"}
+        }));
+
+        let fields = additional_model_request_fields(&request, "claude-opus-5-5")
+            .expect("supported model should convert")
+            .expect("Claude request should contain model extension fields");
+
+        assert_eq!(
+            document_to_json_value(&fields)["anthropic_beta"],
+            json!([
+                "interleaved-thinking-2025-05-14",
+                BEDROCK_THINKING_BLOCK_BINDING_BETA
+            ])
+        );
+    }
+
+    #[test]
+    fn unsupported_models_strip_binding_without_adding_beta() {
+        let mut request = UnifiedRequest::default();
+        request.options.thinking = Some(json!({
+            "type": "adaptive",
+            "block_binding": {"prefix_mismatch_behavior": "drop_block"}
+        }));
+
+        let fields = additional_model_request_fields(&request, "claude-opus-5")
+            .expect("unsupported model should be safely normalized")
+            .expect("Claude request should contain thinking fields");
+        let fields = document_to_json_value(&fields);
+
+        assert_eq!(fields["thinking"], json!({"type": "adaptive"}));
+        assert!(fields.get("anthropic_beta").is_none());
+    }
+
+    #[test]
+    fn haiku_and_sonnet_binding_beta_requires_adaptive_thinking() {
+        for model in ["claude-haiku-5-5", "claude-sonnet-5-5"] {
+            let mut request = UnifiedRequest::default();
+            request.options.thinking = Some(json!({
+                "type": "enabled",
+                "block_binding": {"prefix_mismatch_behavior": "drop_block"}
+            }));
+
+            let fields = additional_model_request_fields(&request, model)
+                .expect("non-adaptive control should be safely normalized")
+                .expect("Claude request should contain thinking fields");
+            let fields = document_to_json_value(&fields);
+
+            assert_eq!(fields["thinking"], json!({"type": "enabled"}), "{model}");
+            assert!(fields.get("anthropic_beta").is_none(), "{model}");
+        }
     }
 
     #[test]

@@ -657,15 +657,6 @@ fn normalize_claude_thinking(
     let Some(fields) = thinking.as_object() else {
         return Err(claude_invalid("thinking must be an object", "thinking"));
     };
-    if fields.get("block_binding").is_some() {
-        // Bedrock Converse rejects the Messages `thinking-block-binding` beta as
-        // an unknown thinking input, so the policy cannot be forwarded and the
-        // upstream default applies instead of failing the request.
-        debug!(
-            "claude profile: model={} ignores thinking.block_binding",
-            rules.model
-        );
-    }
     let Some(type_name) = fields.get("type").and_then(Value::as_str) else {
         return Err(claude_invalid("thinking.type is required", "thinking.type"));
     };
@@ -740,6 +731,11 @@ fn normalize_claude_thinking(
         && let Some(display) = display
     {
         normalized["display"] = json!(display);
+    }
+    // The Bedrock Converse dialect decides whether the binding policy is
+    // supported for the exact upstream model and adds its required beta field.
+    if let Some(block_binding) = fields.get("block_binding") {
+        normalized["block_binding"] = block_binding.clone();
     }
     request.options.thinking = Some(normalized);
     Ok(())
