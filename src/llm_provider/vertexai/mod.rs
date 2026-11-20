@@ -1138,7 +1138,7 @@ fn map_vertex_thinking_config(request: &ChatCompletionRequest) -> Option<VertexT
     let thinking_level = request
         .reasoning_effort
         .as_deref()
-        .and_then(map_reasoning_effort_to_vertex_level)?;
+        .and_then(|effort| map_reasoning_effort_to_vertex_level(&request.model, effort))?;
 
     Some(VertexThinkingConfig {
         thinking_budget: None,
@@ -1182,14 +1182,36 @@ fn gemini_max_output_tokens_limit(model: &str) -> Option<i32> {
     }
 }
 
-fn map_reasoning_effort_to_vertex_level(effort: &str) -> Option<VertexThinkingLevel> {
+/// Maps an OpenAI-style `reasoning_effort` to a Vertex `thinkingLevel` that `model` accepts.
+///
+/// Vertex rejects a level the model does not support with HTTP 400, so out-of-range efforts are
+/// clamped to the nearest supported level instead of being forwarded as-is:
+/// - Gemini 4 models do not support MINIMAL; `minimal` becomes LOW, their lowest level.
+/// - XHIGH exists only on some models (Gemini 4 Neon / Hydrogen); elsewhere `xhigh` becomes HIGH.
+///
+/// Unknown efforts return `None`, so no thinking config is sent and the model default applies.
+fn map_reasoning_effort_to_vertex_level(model: &str, effort: &str) -> Option<VertexThinkingLevel> {
+    let model = model.strip_prefix("google/").unwrap_or(model);
     match effort {
+        "minimal" if is_gemini_4_model(model) => Some(VertexThinkingLevel::Low),
         "minimal" => Some(VertexThinkingLevel::Minimal),
         "low" => Some(VertexThinkingLevel::Low),
         "medium" => Some(VertexThinkingLevel::Medium),
         "high" | "max" => Some(VertexThinkingLevel::High),
+        "xhigh" if supports_xhigh_thinking_level(model) => Some(VertexThinkingLevel::Xhigh),
+        "xhigh" => Some(VertexThinkingLevel::High),
         _ => None,
     }
+}
+
+fn is_gemini_4_model(model: &str) -> bool {
+    model.starts_with("gemini-4-")
+}
+
+/// Gemini 4 Neon and Hydrogen accept LOW, MEDIUM, HIGH and XHIGH. Gemini 4 Carbon and Argon stop
+/// at HIGH: https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/thinking
+fn supports_xhigh_thinking_level(model: &str) -> bool {
+    model.starts_with("gemini-4-neon") || model.starts_with("gemini-4-hydrogen")
 }
 
 fn extract_tool_calls_from_candidate(
@@ -1729,27 +1751,107 @@ mod tests {
 
     #[test]
     fn map_reasoning_effort_to_vertex_level_works() {
+        let model = "gemini-3.8-flash";
         assert_eq!(
-            map_reasoning_effort_to_vertex_level("minimal"),
+            map_reasoning_effort_to_vertex_level(model, "minimal"),
             Some(VertexThinkingLevel::Minimal)
         );
         assert_eq!(
-            map_reasoning_effort_to_vertex_level("low"),
+            map_reasoning_effort_to_vertex_level(model, "low"),
             Some(VertexThinkingLevel::Low)
         );
         assert_eq!(
-            map_reasoning_effort_to_vertex_level("medium"),
+            map_reasoning_effort_to_vertex_level(model, "medium"),
             Some(VertexThinkingLevel::Medium)
         );
         assert_eq!(
-            map_reasoning_effort_to_vertex_level("high"),
+            map_reasoning_effort_to_vertex_level(model, "high"),
             Some(VertexThinkingLevel::High)
         );
         assert_eq!(
-            map_reasoning_effort_to_vertex_level("max"),
+            map_reasoning_effort_to_vertex_level(model, "max"),
             Some(VertexThinkingLevel::High)
         );
-        assert_eq!(map_reasoning_effort_to_vertex_level("unknown"), None);
+        assert_eq!(
+            map_reasoning_effort_to_vertex_level(model, "xhigh"),
+            Some(VertexThinkingLevel::High)
+        );
+        assert_eq!(map_reasoning_effort_to_vertex_level(model, "unknown"), None);
+    }
+
+    #[test]
+    fn map_reasoning_effort_to_vertex_level_maps_minimal_to_low_for_gemini_4() {
+        for model in [
+            "gemini-4-argon",
+            "gemini-4-carbon",
+            "gemini-4-neon",
+            "gemini-4-hydrogen",
+            "google/gemini-4-neon",
+        ] {
+            assert_eq!(
+                map_reasoning_effort_to_vertex_level(model, "minimal"),
+                Some(VertexThinkingLevel::Low),
+                "{model}"
+            );
+        }
+    }
+
+    #[test]
+    fn map_reasoning_effort_to_vertex_level_forwards_xhigh_for_neon_and_hydrogen() {
+        for model in [
+            "gemini-4-neon",
+            "gemini-4-hydrogen",
+            "google/gemini-4-hydrogen",
+        ] {
+            assert_eq!(
+                map_reasoning_effort_to_vertex_level(model, "xhigh"),
+                Some(VertexThinkingLevel::Xhigh),
+                "{model}"
+            );
+            assert_eq!(
+                map_reasoning_effort_to_vertex_level(model, "high"),
+                Some(VertexThinkingLevel::High),
+                "{model}"
+            );
+        }
+    }
+
+    #[test]
+    fn map_reasoning_effort_to_vertex_level_clamps_xhigh_to_high_without_support() {
+        for model in [
+            "gemini-4-argon",
+            "gemini-4-carbon",
+            "gemini-3.1-pro-preview",
+        ] {
+            assert_eq!(
+                map_reasoning_effort_to_vertex_level(model, "xhigh"),
+                Some(VertexThinkingLevel::High),
+                "{model}"
+            );
+        }
+    }
+
+    #[test]
+    fn map_vertex_thinking_config_sends_gemini_4_supported_levels() {
+        let request = |model: &str, effort: &str| -> ChatCompletionRequest {
+            serde_json::from_value(serde_json::json!({
+                "model": model,
+                "messages": [{"role": "user", "content": "hi"}],
+                "reasoning_effort": effort
+            }))
+            .expect("parse effort request")
+        };
+
+        let config = map_vertex_thinking_config(&request("gemini-4-neon", "xhigh"))
+            .expect("config must exist");
+        assert_eq!(config.thinking_level, Some(VertexThinkingLevel::Xhigh));
+        assert_eq!(config.thinking_budget, None);
+        assert_eq!(config.include_thoughts, Some(true));
+
+        let config = map_vertex_thinking_config(&request("gemini-4-carbon", "minimal"))
+            .expect("config must exist");
+        assert_eq!(config.thinking_level, Some(VertexThinkingLevel::Low));
+        assert_eq!(config.thinking_budget, None);
     }
 
     #[test]
