@@ -60,6 +60,9 @@ pub enum VertexThinkingLevel {
     Low,
     Medium,
     High,
+    /// Above HIGH; only some models accept it (e.g. Gemini 4 Neon / Hydrogen).
+    #[serde(rename = "XHIGH")]
+    Xhigh,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -302,5 +305,12 @@ mod tests {
         assert_eq!(value["thinkingBudget"], 2048);
         assert_eq!(value["thinkingLevel"], "MEDIUM");
         assert_eq!(value["includeThoughts"], true);
+    }
+
+    #[test]
+    fn vertex_thinking_level_serializes_xhigh_without_underscore() {
+        let value = serde_json::to_value(VertexThinkingLevel::Xhigh)
+            .expect("must serialize thinking level");
+        assert_eq!(value, "XHIGH");
     }
 }

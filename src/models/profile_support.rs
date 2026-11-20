@@ -390,10 +390,23 @@ pub(super) fn has_non_text_content(request: &UnifiedRequest) -> bool {
 pub(super) fn gemini_level_for_effort(
     effort: &ReasoningEffort,
 ) -> Result<VertexThinkingLevel, ModelProfileError> {
+    gemini_level_for_effort_with_xhigh(effort, false)
+}
+
+/// Map a unified reasoning effort onto a Vertex level that the model accepts.
+///
+/// `XHIGH` is documented only on some Gemini 4 models; models without it clamp
+/// `xhigh` to `HIGH`, their highest supported level.
+pub(super) fn gemini_level_for_effort_with_xhigh(
+    effort: &ReasoningEffort,
+    supports_xhigh: bool,
+) -> Result<VertexThinkingLevel, ModelProfileError> {
     match effort.as_str() {
         Some("none" | "minimal" | "low") => Ok(VertexThinkingLevel::Low),
         Some("medium") => Ok(VertexThinkingLevel::Medium),
-        Some("high" | "xhigh" | "max") => Ok(VertexThinkingLevel::High),
+        Some("high" | "max") => Ok(VertexThinkingLevel::High),
+        Some("xhigh") if supports_xhigh => Ok(VertexThinkingLevel::Xhigh),
+        Some("xhigh") => Ok(VertexThinkingLevel::High),
         Some(other) => Err(ModelProfileError::InvalidRequest {
             message: format!("unsupported reasoning_effort {other} for Gemini"),
             param: Some("reasoning_effort".to_owned()),
@@ -473,6 +486,45 @@ pub(super) fn gemini_thinking_config(
         thinking_level: level,
         include_thoughts,
     }))
+}
+
+/// Apply Gemini reasoning controls to an already-encoded generateContent request.
+///
+/// An explicit `reasoning_effort` selects a supported thinking level; otherwise a
+/// `thinking` object is translated to the closest supported level. `supports_xhigh`
+/// is the model's documented `XHIGH` support.
+pub(super) fn apply_gemini_reasoning_controls(
+    request: &UnifiedRequest,
+    generation: &mut VertexGenerationConfig,
+    model: &str,
+    supports_xhigh: bool,
+) -> Result<(), ModelProfileError> {
+    let existing_include_thoughts = generation
+        .thinking_config
+        .as_ref()
+        .and_then(|config| config.include_thoughts);
+    let effort = request.options.reasoning_effort.as_ref();
+    let thinking = request.options.thinking.as_ref();
+    if effort.is_some() && is_adaptive_thinking(thinking) {
+        debug!(
+            "gemini profile: model={} ignoring adaptive thinking in favor of reasoning_effort",
+            model
+        );
+    }
+    if let Some(effort) = effort {
+        let level = gemini_level_for_effort_with_xhigh(effort, supports_xhigh)?;
+        debug!(
+            "gemini profile: model={} effort={:?} -> thinking_level={:?}",
+            model, effort, level
+        );
+        generation.thinking_config = Some(gemini_thinking_config_for_level(
+            level,
+            existing_include_thoughts,
+        ));
+    } else if let Some(thinking) = thinking {
+        generation.thinking_config = gemini_thinking_config(thinking, existing_include_thoughts)?;
+    }
+    Ok(())
 }
 
 fn gemini_level_for_budget(budget: i64) -> Result<Option<VertexThinkingLevel>, ModelProfileError> {

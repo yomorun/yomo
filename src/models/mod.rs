@@ -56,6 +56,12 @@ pub mod gpt_6_sol;
 pub mod gemini_3_8_flash;
 /// Gemini 4 Argon request profile.
 pub mod gemini_4_argon;
+/// Gemini 4 Carbon request profile.
+pub mod gemini_4_carbon;
+/// Gemini 4 Hydrogen request profile.
+pub mod gemini_4_hydrogen;
+/// Gemini 4 Neon request profile.
+pub mod gemini_4_neon;
 
 /// Claude Fable 5 profile.
 pub mod claude_fable_5;
@@ -335,6 +341,18 @@ impl ModelProfileRegistry {
         profiles.insert(
             "gemini-4-argon".to_owned(),
             Arc::new(gemini_4_argon::Gemini4ArgonProfile),
+        );
+        profiles.insert(
+            "gemini-4-carbon".to_owned(),
+            Arc::new(gemini_4_carbon::Gemini4CarbonProfile),
+        );
+        profiles.insert(
+            "gemini-4-hydrogen".to_owned(),
+            Arc::new(gemini_4_hydrogen::Gemini4HydrogenProfile),
+        );
+        profiles.insert(
+            "gemini-4-neon".to_owned(),
+            Arc::new(gemini_4_neon::Gemini4NeonProfile),
         );
         let claude_profiles: [(&str, Arc<dyn ModelProfile>); 13] = [
             (
@@ -1352,6 +1370,53 @@ mod tests {
             .thinking_config
             .expect("thinking config");
         assert_eq!(config.thinking_level, Some(VertexThinkingLevel::High));
+
+        for (public_model, effort, expected) in [
+            ("gemini-4-carbon", "xhigh", VertexThinkingLevel::High),
+            ("gemini-4-carbon", "minimal", VertexThinkingLevel::Low),
+            ("gemini-4-neon", "xhigh", VertexThinkingLevel::Xhigh),
+            ("gemini-4-hydrogen", "xhigh", VertexThinkingLevel::Xhigh),
+        ] {
+            let request = crate::api::request_from_value(
+                &json!({
+                    "model": public_model,
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "reasoning_effort": effort
+                }),
+                UnifiedSourceProtocol::ChatCompletions,
+            )
+            .expect("parse Gemini 4 request");
+            let binding = ModelBinding {
+                public_model: public_model.to_owned(),
+                model: public_model.to_owned(),
+                provider: "google.global".to_owned(),
+                upstream: Upstream::GoogleVertex,
+                upstream_model: public_model.to_owned(),
+                dialect: Some(Dialect::GeminiGenerateContent),
+                label: format!("google.global.{public_model}"),
+            };
+            let mut body = VertexGenerateContentRequest {
+                contents: Vec::new(),
+                system_instruction: None,
+                generation_config: Some(VertexGenerationConfig::default()),
+                tools: None,
+                tool_config: None,
+            };
+            profiles
+                .resolve(public_model)
+                .adapt_gemini_generate_content_request(&request, &binding, &mut body)
+                .expect("adapt Gemini 4 profile");
+            let config = body
+                .generation_config
+                .expect("generation config")
+                .thinking_config
+                .expect("thinking config");
+            assert_eq!(
+                config.thinking_level,
+                Some(expected),
+                "{public_model} {effort}"
+            );
+        }
     }
 
     fn claude_binding(public_model: &str) -> ModelBinding {
