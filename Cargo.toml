@@ -1,6 +1,6 @@
 [package]
 name = "yomo"
-version = "2.1.6"
+version = "2.2.0"
 edition = "2024"
 license = "Apache-2.0"
 description = "A QUIC-based runtime for AI-LLM tool routing and serverless execution"
@@ -16,6 +16,7 @@ async-trait = "0.1"
 async-stream = "0.3"
 axum = { version = "0.8", features = ["macros"] }
 base64 = "0.22"
+tower = "0.5"
 bon = "3"
 chrono = "0.4"
 clap = { version = "4.5", features = ["derive", "env"] }
@@ -23,12 +24,12 @@ config = "0.15"
 env_logger = "0.11"
 futures-core = "0.3"
 futures-util = "0.3"
-flate2 = "1.1"
 log = "0.4"
 opentelemetry = "0.32"
 opentelemetry-otlp = { version = "0.32", features = ["http-proto"] }
 opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
-brotli = "8"
+secrecy = { version = "0.10", features = ["serde"] }
+url = { version = "2", features = ["serde"] }
 rustls-native-certs = "0.8"
 rustls-pki-types = "1.14"
 reqwest = { version = "0.13", default-features = false, features = [
@@ -38,8 +39,15 @@ reqwest = { version = "0.13", default-features = false, features = [
     "gzip",
     "rustls",
 ] }
-multer = "3"
+hyper-util = { version = "0.1", features = [
+    "client-legacy",
+    "client-proxy",
+    "client-proxy-system",
+    "tokio",
+] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 aws-config = "1"
+aws-smithy-types = "1"
 aws-sdk-bedrockruntime = "1"
 aws-credential-types = "1"
 aws-types = "1"

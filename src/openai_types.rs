@@ -3,6 +3,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
+use crate::provider::ReasoningEffort;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Usage {
     pub prompt_tokens: i64,
@@ -70,7 +72,7 @@ pub struct ChatCompletionRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking: Option<ThinkingConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning_effort: Option<String>,
+    pub reasoning_effort: Option<ReasoningEffort>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chat_template_kwargs: Option<HashMap<String, Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -97,6 +99,10 @@ pub struct ChatCompletionRequest {
     pub metadata: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_context: Option<Value>,
+    /// Fidelity channel for unmodeled top-level request fields, retained when
+    /// encoding requests in the same API format.
+    #[serde(flatten, default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra: HashMap<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,6 +114,12 @@ pub struct ThinkingConfig {
     /// - https://cloud.tencent.com/document/product/1823/130079
     #[serde(rename = "type")]
     pub kind: ThinkingType,
+    /// Optional maximum thinking-token budget supported by some providers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_tokens: Option<u32>,
+    /// GLM extension recommending whether to clear previous thinking state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clear_thinking: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -166,6 +178,30 @@ impl Role {
     }
 }
 
+/// IR reasoning block: reasoning content passed across protocols.
+///
+/// Carries responses reasoning items (summary + encrypted_content) and
+/// anthropic thinking / redacted_thinking blocks; encrypted payloads must pass through unchanged.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ReasoningBlock {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// responses summary parts, passed through unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<Vec<Value>>,
+    /// anthropic thinking text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking: Option<String>,
+    /// anthropic thinking signature (must be returned unchanged).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+    /// Encrypted reasoning payload (responses encrypted_content / anthropic redacted_thinking data).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_content: Option<String>,
+    #[serde(flatten, default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra: HashMap<String, Value>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Message {
     pub role: Role,
@@ -173,6 +209,12 @@ pub struct Message {
     pub content: Content,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_content: Option<String>,
+    /// IR extension: structured reasoning block (encrypted passthrough item).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_blocks: Option<Vec<ReasoningBlock>>,
+    /// IR extension: cache hint (semantic marker equivalent to anthropic cache_control).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -191,6 +233,8 @@ impl<'de> Deserialize<'de> for Message {
             content: Content,
             reasoning_content: Option<String>,
             reasoning: Option<String>,
+            reasoning_blocks: Option<Vec<ReasoningBlock>>,
+            cache_control: Option<Value>,
             tool_call_id: Option<String>,
             tool_calls: Option<Vec<ToolCall>>,
         }
@@ -206,6 +250,8 @@ impl<'de> Deserialize<'de> for Message {
             role: raw.role,
             content: raw.content,
             reasoning_content: raw.reasoning_content.or(raw.reasoning),
+            reasoning_blocks: raw.reasoning_blocks,
+            cache_control: raw.cache_control,
             tool_call_id: raw.tool_call_id,
             tool_calls: raw.tool_calls,
         })
@@ -237,6 +283,16 @@ pub enum ContentPart {
     },
     InputAudio {
         input_audio: InputAudio,
+    },
+    /// Provider-specific video URL block preserved by OpenAI-compatible chat requests.
+    #[serde(rename = "video_url")]
+    VideoUrl {
+        video_url: Value,
+    },
+    /// Provider-specific remote file URL block preserved by OpenAI-compatible chat requests.
+    #[serde(rename = "file_url")]
+    FileUrl {
+        file_url: Value,
     },
     File {
         #[serde(default)]
@@ -298,6 +354,9 @@ pub struct Prediction {
 pub struct ToolDefinition {
     pub r#type: String,
     pub function: FunctionDefinition,
+    /// IR extension: fidelity channel for non-function tools (e.g. codex local_shell) raw fields.
+    #[serde(flatten, default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra: HashMap<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -535,8 +594,98 @@ pub struct ErrorDetail {
     pub param: Option<String>,
 }
 
+impl ChatCompletionRequest {
+    /// Normalize cross-vendor reasoning/thinking request fields into IR modeled fields.
+    ///
+    /// Top-level effort and thinking values take priority over their matching
+    /// compatibility values in `chat_template_kwargs` and unknown fields.
+    pub fn normalize_reasoning_compat_fields(&mut self) {
+        if self.thinking.is_none()
+            && let Some(kind) = self
+                .extra
+                .get("thinking")
+                .and_then(parse_thinking_type_from_value)
+        {
+            self.thinking = Some(ThinkingConfig {
+                kind,
+                budget_tokens: self
+                    .extra
+                    .get("thinking")
+                    .and_then(|thinking| thinking.get("budget_tokens"))
+                    .and_then(Value::as_u64)
+                    .and_then(|budget| u32::try_from(budget).ok()),
+                clear_thinking: self
+                    .extra
+                    .get("thinking")
+                    .and_then(|thinking| thinking.get("clear_thinking"))
+                    .and_then(Value::as_bool),
+            });
+        }
+
+        if self.reasoning_effort.is_none() {
+            self.reasoning_effort = self
+                .extra
+                .get("reasoning_effort")
+                .and_then(parse_effort)
+                .or_else(|| {
+                    self.extra
+                        .get("reasoning")
+                        .and_then(extract_reasoning_effort)
+                });
+        }
+
+        let thinking = self
+            .thinking
+            .as_ref()
+            .and_then(|thinking| serde_json::to_value(thinking).ok());
+        let mut options = crate::provider::UnifiedRequestOptions {
+            reasoning_effort: self.reasoning_effort.clone(),
+            thinking,
+            chat_template_kwargs: self.chat_template_kwargs.clone(),
+            ..Default::default()
+        };
+        options.normalize_reasoning_controls();
+        self.reasoning_effort = options.reasoning_effort;
+        self.thinking = options
+            .thinking
+            .and_then(|thinking| serde_json::from_value(thinking).ok());
+        self.chat_template_kwargs = options.chat_template_kwargs;
+    }
+}
+
+fn parse_effort(value: &Value) -> Option<ReasoningEffort> {
+    match value {
+        Value::String(value) if !value.trim().is_empty() => Some(value.as_str().into()),
+        Value::Number(_) => serde_json::from_value(value.clone()).ok(),
+        _ => None,
+    }
+}
+
+fn extract_reasoning_effort(value: &Value) -> Option<ReasoningEffort> {
+    value
+        .as_object()
+        .and_then(|object| object.get("effort"))
+        .and_then(parse_effort)
+}
+
+fn parse_thinking_type_from_value(value: &Value) -> Option<ThinkingType> {
+    let raw = match value {
+        Value::String(kind) => kind.as_str(),
+        Value::Object(object) => object.get("type")?.as_str()?,
+        _ => return None,
+    };
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "enabled" => Some(ThinkingType::Enabled),
+        "adaptive" => Some(ThinkingType::Adaptive),
+        "disabled" => Some(ThinkingType::Disabled),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     fn parse_stop(stop: &str) -> Option<Vec<String>> {
@@ -784,6 +933,80 @@ mod tests {
     }
 
     #[test]
+    fn message_content_parts_preserve_video_url_payload() {
+        let message = r#"{
+            "role":"user",
+            "content":[
+                {"type":"video_url","video_url":{"url":"https://example.com/clip.mp4"}}
+            ]
+        }"#;
+
+        let parsed: Message = serde_json::from_str(message).expect("parse video message");
+        let Content::Parts(parts) = parsed.content else {
+            panic!("expected content parts");
+        };
+        let ContentPart::VideoUrl { video_url } = &parts[0] else {
+            panic!("expected video_url content part");
+        };
+        assert_eq!(video_url["url"], "https://example.com/clip.mp4");
+        assert_eq!(
+            serde_json::to_value(parts[0].clone()).expect("serialize video part"),
+            json!({
+                "type":"video_url",
+                "video_url":{"url":"https://example.com/clip.mp4"}
+            })
+        );
+    }
+
+    #[test]
+    fn message_content_parts_preserve_file_url_payload() {
+        let message = r#"{
+            "role":"user",
+            "content":[
+                {"type":"file_url","file_url":{"url":"https://example.com/report.pdf"}}
+            ]
+        }"#;
+
+        let parsed: Message = serde_json::from_str(message).expect("parse file_url message");
+        let Content::Parts(parts) = parsed.content else {
+            panic!("expected content parts");
+        };
+        let ContentPart::FileUrl { file_url } = &parts[0] else {
+            panic!("expected file_url content part");
+        };
+        assert_eq!(file_url["url"], "https://example.com/report.pdf");
+        assert_eq!(
+            serde_json::to_value(parts[0].clone()).expect("serialize file_url part"),
+            json!({
+                "type":"file_url",
+                "file_url":{"url":"https://example.com/report.pdf"}
+            })
+        );
+    }
+
+    #[test]
+    fn thinking_config_preserves_clear_thinking() {
+        let request: ChatCompletionRequest = serde_json::from_value(json!({
+            "model":"glm-5.3-flash",
+            "messages":[],
+            "thinking":{"type":"enabled", "clear_thinking":false}
+        }))
+        .expect("parse thinking config");
+
+        assert_eq!(
+            request
+                .thinking
+                .as_ref()
+                .and_then(|thinking| thinking.clear_thinking),
+            Some(false)
+        );
+        assert_eq!(
+            serde_json::to_value(request).expect("serialize request")["thinking"]["clear_thinking"],
+            false
+        );
+    }
+
+    #[test]
     fn message_content_parts_accept_nested_file_object() {
         let message = r#"{
             "role":"user",
@@ -828,5 +1051,133 @@ mod tests {
         assert!(file.file_id.is_none());
         assert_eq!(file_id.as_deref(), Some("file-legacy"));
         assert_eq!(filename.as_deref(), Some("legacy.txt"));
+    }
+
+    #[test]
+    fn normalize_reasoning_compat_uses_extra_fields_when_modeled_fields_are_missing() {
+        let mut request = ChatCompletionRequest {
+            model: "glm-5.3-flash".to_string(),
+            messages: vec![],
+            extra: HashMap::from([
+                (
+                    "thinking".to_string(),
+                    serde_json::json!({"type": "enabled"}),
+                ),
+                (
+                    "reasoning".to_string(),
+                    serde_json::json!({"effort": "max", "summary": "auto"}),
+                ),
+            ]),
+            ..Default::default()
+        };
+
+        request.normalize_reasoning_compat_fields();
+
+        assert_eq!(
+            request
+                .thinking
+                .as_ref()
+                .map(|thinking| thinking.kind.clone()),
+            Some(ThinkingType::Enabled)
+        );
+        assert_eq!(
+            request
+                .reasoning_effort
+                .as_ref()
+                .and_then(ReasoningEffort::as_str),
+            Some("max")
+        );
+    }
+
+    #[test]
+    fn normalize_reasoning_compat_preserves_conflicting_client_controls() {
+        let mut request = ChatCompletionRequest {
+            model: "glm-5.3-flash".to_string(),
+            messages: vec![],
+            thinking: Some(ThinkingConfig {
+                kind: ThinkingType::Disabled,
+                budget_tokens: None,
+                clear_thinking: None,
+            }),
+            reasoning_effort: Some("high".into()),
+            extra: HashMap::from([
+                (
+                    "thinking".to_string(),
+                    serde_json::json!({"type": "enabled"}),
+                ),
+                (
+                    "reasoning".to_string(),
+                    serde_json::json!({"effort": "max"}),
+                ),
+            ]),
+            ..Default::default()
+        };
+
+        request.normalize_reasoning_compat_fields();
+
+        assert_eq!(
+            request
+                .thinking
+                .as_ref()
+                .map(|thinking| thinking.kind.clone()),
+            Some(ThinkingType::Disabled)
+        );
+        assert_eq!(
+            request
+                .reasoning_effort
+                .as_ref()
+                .and_then(ReasoningEffort::as_str),
+            Some("high")
+        );
+    }
+}
+
+#[cfg(test)]
+mod reasoning_block_tests {
+    use super::*;
+
+    #[test]
+    fn message_deserializes_reasoning_blocks_and_cache_control() {
+        let message = r#"{
+            "role": "assistant",
+            "content": "ok",
+            "reasoning_blocks": [
+                {
+                    "id": "rs_1",
+                    "summary": [{"type": "summary_text", "text": "think"}],
+                    "encrypted_content": "enc-blob"
+                }
+            ],
+            "cache_control": {"type": "ephemeral"}
+        }"#;
+
+        let parsed: Message = serde_json::from_str(message).expect("parse message");
+        let blocks = parsed.reasoning_blocks.expect("reasoning blocks");
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].id.as_deref(), Some("rs_1"));
+        assert_eq!(blocks[0].encrypted_content.as_deref(), Some("enc-blob"));
+        assert_eq!(parsed.cache_control.unwrap()["type"], "ephemeral");
+    }
+
+    #[test]
+    fn message_without_new_fields_serializes_without_new_keys() {
+        let message: Message =
+            serde_json::from_str(r#"{"role":"assistant","content":"ok"}"#).expect("parse");
+        let value = serde_json::to_value(&message).expect("serialize");
+        let object = value.as_object().expect("object");
+        assert!(!object.contains_key("reasoning_blocks"));
+        assert!(!object.contains_key("cache_control"));
+        assert_eq!(object.get("content"), Some(&serde_json::json!("ok")));
+    }
+
+    #[test]
+    fn reasoning_block_roundtrips_extra_fields() {
+        let block: ReasoningBlock =
+            serde_json::from_str(r#"{"thinking":"hmm","signature":"sig","future_field":1}"#)
+                .expect("parse reasoning block");
+        let value = serde_json::to_value(&block).expect("serialize");
+        assert_eq!(value["thinking"], "hmm");
+        assert_eq!(value["signature"], "sig");
+        assert_eq!(value["future_field"], 1);
     }
 }

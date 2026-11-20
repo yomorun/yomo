@@ -44,11 +44,26 @@ ollama pull ornith
 
 Launch the server:
 
-```sh
-yomo serve
+Create `agent.yaml` with explicit provider connection facts:
+
+```yaml
+defaults:
+  model: ornith
+providers:
+  ollama.local:
+    upstream: openai-compatible
+    base_url: http://127.0.0.1:11434/v1
+models:
+  ornith:
+    upstream:
+      provider: ollama.local
 ```
 
-You can also use the `--config` flag to specify a custom coniguration yaml file.
+```sh
+yomo serve --config agent.yaml
+```
+
+Connections and models are separate maps. Each public model has one fixed upstream connection and dialect, resolved at startup by vendor/model rules. Conversation models expose Chat Completions, Responses and Messages APIs where the requested semantics can be converted; opaque non-chat models declare `serve` paths. Old `type/model_id/params` lists are rejected. Custom OpenAI-compatible models have unknown capabilities rather than inferred support.
 
 ### Step 3. Implement the LLM Function Calling
 
@@ -149,7 +164,7 @@ project, for example:
 - Run YoMo server:
 
   ```sh
-  ./target/release/yomo serve
+   ./target/release/yomo serve --config agent.yaml
   ```
 
 - Initialize a Serverless LLM Tool project:
