@@ -10,10 +10,11 @@ use serde_json::{Value, json};
 use crate::openai_responses_types::ResponsesStreamEvent;
 use crate::provider::{
     UnifiedCacheControl, UnifiedCandidate, UnifiedContentPart, UnifiedContentPartKind,
-    UnifiedEnding, UnifiedInputItem, UnifiedInputItemKind, UnifiedMediaSource, UnifiedOutputItem,
-    UnifiedResponseError, UnifiedRole, UnifiedTool, UnifiedToolChoice, UnifiedToolKind,
-    UnifiedToolOutput, input_item, merge_extensions, output_from_input, parse_role,
-    response_envelope, role_name, source_extensions, value_string,
+    UnifiedEnding, UnifiedInputItem, UnifiedInputItemKind, UnifiedMediaSource,
+    UnifiedMessageBoundary, UnifiedOutputItem, UnifiedResponseError, UnifiedRole, UnifiedTool,
+    UnifiedToolChoice, UnifiedToolKind, UnifiedToolOutput, input_item_with_boundary,
+    merge_extensions, output_from_input, parse_role, response_envelope, role_name,
+    source_extensions, value_string,
 };
 use crate::provider::{
     UnifiedContentDelta, UnifiedEventKind, UnifiedItemDelta, UnifiedOutputItemKind, UnifiedRequest,
@@ -227,6 +228,21 @@ fn parse_output(value: &Value) -> Result<UnifiedToolOutput, String> {
     })
 }
 fn parse_item(value: &Value, index: usize) -> Result<UnifiedInputItem, String> {
+    parse_item_with_boundary(value, index, None)
+}
+
+/// Parse one native item, attaching the conversational turn it belongs to.
+///
+/// OpenAI Responses exposes `input` as a flat, chronologically ordered item
+/// list; membership of an item in an assistant turn (its `reasoning` and
+/// `function_call` items) or in the single user turn that answers that turn's
+/// tool calls is positional, so the caller derives the boundary and passes it
+/// in here.
+fn parse_item_with_boundary(
+    value: &Value,
+    index: usize,
+    boundary: Option<UnifiedMessageBoundary>,
+) -> Result<UnifiedInputItem, String> {
     let kind = match value["type"].as_str().unwrap_or("message") {
         "message" => UnifiedInputItemKind::Message {
             role: parse_role(value["role"].as_str().ok_or("message requires role")?)?,
@@ -264,7 +280,7 @@ fn parse_item(value: &Value, index: usize) -> Result<UnifiedInputItem, String> {
             payload: value.clone(),
         },
     };
-    Ok(input_item(
+    Ok(input_item_with_boundary(
         value,
         kind,
         index,
@@ -283,7 +299,85 @@ fn parse_item(value: &Value, index: usize) -> Result<UnifiedInputItem, String> {
             "encrypted_content",
         ],
         PROTOCOL,
+        boundary,
     ))
+}
+
+/// The conversational turn a Responses input item belongs to.
+///
+/// `Assistant` groups a model turn (its `reasoning` items plus the
+/// `function_call` items it emitted); `Tool` groups the single user turn that
+/// answers those calls; `Standalone` marks an item that is a turn of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InputTurn {
+    Assistant(usize),
+    Tool(usize),
+    Standalone(usize),
+}
+
+fn turn_role(turn: InputTurn) -> UnifiedRole {
+    match turn {
+        InputTurn::Assistant(_) => UnifiedRole::Assistant,
+        InputTurn::Tool(_) => UnifiedRole::User,
+        InputTurn::Standalone(_) => UnifiedRole::User,
+    }
+}
+
+/// Assign each input item the turn it belongs to, following Responses ordering.
+///
+/// A `reasoning` or `function_call` item continues the assistant turn opened by
+/// the previous model item. A `function_call_output` answers the tool calls of
+/// the most recent assistant turn, so consecutive outputs share one user turn —
+/// this is what keeps parallel tool calls paired with the tool results that
+/// answer them. A `message` item, or any unmodeled item, is its own turn.
+fn assign_input_turns(items: &[Value]) -> Vec<InputTurn> {
+    let mut turns = Vec::with_capacity(items.len());
+    let mut next_id = 0usize;
+    let mut assistant: Option<usize> = None;
+    let mut tool: Option<usize> = None;
+    for item in items {
+        let turn = match item["type"].as_str().unwrap_or("message") {
+            "reasoning" => {
+                let id = *assistant.get_or_insert_with(|| {
+                    let id = next_id;
+                    next_id += 1;
+                    id
+                });
+                InputTurn::Assistant(id)
+            }
+            "function_call" => {
+                // A call block opens a model turn; outputs answer the calls that
+                // precede them, so the previous user turn is closed here.
+                tool = None;
+                let id = *assistant.get_or_insert_with(|| {
+                    let id = next_id;
+                    next_id += 1;
+                    id
+                });
+                InputTurn::Assistant(id)
+            }
+            "function_call_output" => {
+                // Outputs answering a model turn close it, so a later call block
+                // opens a new model turn rather than extending the answered one.
+                assistant = None;
+                let id = *tool.get_or_insert_with(|| {
+                    let id = next_id;
+                    next_id += 1;
+                    id
+                });
+                InputTurn::Tool(id)
+            }
+            _ => {
+                assistant = None;
+                tool = None;
+                let id = next_id;
+                next_id += 1;
+                InputTurn::Standalone(id)
+            }
+        };
+        turns.push(turn);
+    }
+    turns
 }
 pub fn request_from_value(value: &Value) -> Result<UnifiedRequest, String> {
     let mut request = UnifiedRequest {
@@ -315,12 +409,24 @@ pub fn request_from_value(value: &Value) -> Result<UnifiedRequest, String> {
             phase: None,
         })]
     } else {
-        input
-            .as_array()
-            .ok_or("input must be text or items")?
+        let items = input.as_array().ok_or("input must be text or items")?;
+        let turns = assign_input_turns(items);
+        items
             .iter()
+            .zip(turns)
             .enumerate()
-            .map(|(index, item)| parse_item(item, index))
+            .map(|(index, (item, turn))| {
+                let boundary = UnifiedMessageBoundary {
+                    message_id: match turn {
+                        InputTurn::Assistant(id) => format!("assistant-{id}"),
+                        InputTurn::Tool(id) => format!("tool-{id}"),
+                        InputTurn::Standalone(id) => format!("standalone-{id}"),
+                    },
+                    role: turn_role(turn),
+                    block_index: None,
+                };
+                parse_item_with_boundary(item, index, Some(boundary))
+            })
             .collect::<Result<Vec<_>, _>>()?
     };
     request.tools = value["tools"].as_array().map(|tools| {
@@ -1720,6 +1826,119 @@ fn event_type_name(event: &ResponsesStreamEvent) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn boundaries(items: &[Value]) -> Vec<Option<String>> {
+        let request = request_from_value(&json!({"model": "m", "input": items})).expect("request");
+        request
+            .input
+            .iter()
+            .map(|item| {
+                item.message
+                    .as_ref()
+                    .map(|boundary| boundary.message_id.clone())
+            })
+            .collect()
+    }
+
+    /// Parallel tool calls and the outputs answering them are one assistant turn
+    /// plus one user turn, so a Converse encoder can keep them paired.
+    #[test]
+    fn parallel_tool_outputs_share_a_single_user_turn() {
+        let boundaries = boundaries(&[
+            json!({"type":"message","role":"user","content":[{"type":"input_text","text":"go"}]}),
+            json!({"type":"function_call","call_id":"c1","name":"a","arguments":"{}"}),
+            json!({"type":"function_call","call_id":"c2","name":"b","arguments":"{}"}),
+            json!({"type":"function_call_output","call_id":"c1","output":"r1"}),
+            json!({"type":"function_call_output","call_id":"c2","output":"r2"}),
+        ]);
+        assert_eq!(
+            boundaries,
+            vec![
+                Some("standalone-0".to_string()),
+                Some("assistant-1".to_string()),
+                Some("assistant-1".to_string()),
+                Some("tool-2".to_string()),
+                Some("tool-2".to_string()),
+            ]
+        );
+    }
+
+    /// A second call block answers the previous outputs, so it opens a new
+    /// assistant turn and the results that follow open a new user turn.
+    #[test]
+    fn consecutive_tool_rounds_stay_in_separate_turns() {
+        let boundaries = boundaries(&[
+            json!({"type":"function_call","call_id":"c1","name":"a","arguments":"{}"}),
+            json!({"type":"function_call_output","call_id":"c1","output":"r1"}),
+            json!({"type":"function_call","call_id":"c2","name":"a","arguments":"{}"}),
+            json!({"type":"function_call_output","call_id":"c2","output":"r2"}),
+        ]);
+        assert_eq!(
+            boundaries,
+            vec![
+                Some("assistant-0".to_string()),
+                Some("tool-1".to_string()),
+                Some("assistant-2".to_string()),
+                Some("tool-3".to_string()),
+            ]
+        );
+    }
+
+    /// Reasoning items belong to the assistant turn their calls belong to.
+    #[test]
+    fn reasoning_joins_the_assistant_turn_of_its_calls() {
+        let boundaries = boundaries(&[
+            json!({"type":"reasoning","id":"rs","summary":[{"type":"summary_text","text":"plan"}]}),
+            json!({"type":"function_call","call_id":"c1","name":"a","arguments":"{}"}),
+            json!({"type":"function_call_output","call_id":"c1","output":"r1"}),
+        ]);
+        assert_eq!(
+            boundaries,
+            vec![
+                Some("assistant-0".to_string()),
+                Some("assistant-0".to_string()),
+                Some("tool-1".to_string()),
+            ]
+        );
+    }
+
+    /// A user message between the calls and their results is its own turn, so it
+    /// cannot absorb tool results that belong to the earlier assistant turn.
+    #[test]
+    fn user_message_between_calls_and_results_is_its_own_turn() {
+        let boundaries = boundaries(&[
+            json!({"type":"function_call","call_id":"c1","name":"a","arguments":"{}"}),
+            json!({"type":"message","role":"user","content":[{"type":"input_text","text":"stop"}]}),
+            json!({"type":"function_call_output","call_id":"c1","output":"r1"}),
+        ]);
+        assert_eq!(
+            boundaries,
+            vec![
+                Some("assistant-0".to_string()),
+                Some("standalone-1".to_string()),
+                Some("tool-2".to_string()),
+            ]
+        );
+    }
+
+    /// Turn boundaries carry the role of the turn they describe.
+    #[test]
+    fn turn_boundaries_carry_their_role() {
+        let request = request_from_value(&json!({"model":"m","input":[
+            {"type":"function_call","call_id":"c1","name":"a","arguments":"{}"},
+            {"type":"function_call_output","call_id":"c1","output":"r1"}
+        ]}))
+        .expect("request");
+        assert_eq!(
+            request.input[0].message.as_ref().map(|b| b.role),
+            Some(UnifiedRole::Assistant)
+        );
+        assert_eq!(
+            request.input[1].message.as_ref().map(|b| b.role),
+            Some(UnifiedRole::User)
+        );
+    }
+
     #[test]
     fn string_instructions_remain_native_text() {
         let request =

@@ -1786,6 +1786,83 @@ mod tests {
         ));
     }
 
+    /// Parallel tool calls from a Responses request must be answered by a single
+    /// user message. Anthropic rejects a turn whose `tool_use` blocks are not all
+    /// answered by the next message, so splitting the results would fail upstream.
+    #[test]
+    fn unified_converse_groups_parallel_responses_tool_results_into_one_message() {
+        let request = crate::api::responses::request_from_value(&json!({
+            "model": "claude-haiku-5-5",
+            "input": [
+                {"type":"message","role":"user","content":[{"type":"input_text","text":"go"}]},
+                {"type":"function_call","call_id":"tooluse_1","name":"a","arguments":"{}"},
+                {"type":"function_call","call_id":"tooluse_2","name":"b","arguments":"{}"},
+                {"type":"function_call","call_id":"tooluse_3","name":"c","arguments":"{}"},
+                {"type":"function_call_output","call_id":"tooluse_1","output":"r1"},
+                {"type":"function_call_output","call_id":"tooluse_2","output":"r2"},
+                {"type":"function_call_output","call_id":"tooluse_3","output":"r3"}
+            ],
+            "tools": [
+                {"type":"function","name":"a","parameters":{"type":"object"}},
+                {"type":"function","name":"b","parameters":{"type":"object"}},
+                {"type":"function","name":"c","parameters":{"type":"object"}}
+            ]
+        }))
+        .expect("parse Responses request");
+
+        let messages = unified_to_converse_request(&request)
+            .expect("Converse")
+            .messages;
+        assert_eq!(messages.len(), 3);
+        assert!(matches!(
+            messages[1].content(),
+            [
+                ContentBlock::ToolUse(first),
+                ContentBlock::ToolUse(second),
+                ContentBlock::ToolUse(third)
+            ] if first.tool_use_id == "tooluse_1"
+                && second.tool_use_id == "tooluse_2"
+                && third.tool_use_id == "tooluse_3"
+        ));
+        assert!(matches!(
+            messages[2].content(),
+            [
+                ContentBlock::ToolResult(first),
+                ContentBlock::ToolResult(second),
+                ContentBlock::ToolResult(third)
+            ] if first.tool_use_id == "tooluse_1"
+                && second.tool_use_id == "tooluse_2"
+                && third.tool_use_id == "tooluse_3"
+        ));
+    }
+
+    /// Tool results listed in a different order than their calls still share the
+    /// message that answers the assistant turn.
+    #[test]
+    fn unified_converse_groups_out_of_order_responses_tool_results() {
+        let request = crate::api::responses::request_from_value(&json!({
+            "model": "claude-haiku-5-5",
+            "input": [
+                {"type":"function_call","call_id":"c1","name":"a","arguments":"{}"},
+                {"type":"function_call","call_id":"c2","name":"a","arguments":"{}"},
+                {"type":"function_call_output","call_id":"c2","output":"r2"},
+                {"type":"function_call_output","call_id":"c1","output":"r1"}
+            ],
+            "tools": [{"type":"function","name":"a","parameters":{"type":"object"}}]
+        }))
+        .expect("parse Responses request");
+
+        let messages = unified_to_converse_request(&request)
+            .expect("Converse")
+            .messages;
+        assert_eq!(messages.len(), 2);
+        assert!(matches!(
+            messages[1].content(),
+            [ContentBlock::ToolResult(first), ContentBlock::ToolResult(second)]
+                if first.tool_use_id == "c2" && second.tool_use_id == "c1"
+        ));
+    }
+
     #[test]
     fn unified_converse_omits_empty_tool_result_text() {
         let request = UnifiedRequest {

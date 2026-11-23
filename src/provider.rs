@@ -1612,13 +1612,29 @@ pub fn input_item(
     keys: &[&str],
     protocol: UnifiedSourceProtocol,
 ) -> UnifiedInputItem {
+    input_item_with_boundary(value, kind, index, keys, protocol, None)
+}
+
+/// The common envelope plus the message boundary the item belongs to.
+///
+/// Protocols whose input items carry no per-item message identity pass `None`;
+/// protocols that group several native items into one conversational turn pass
+/// the turn identity so encoders can rebuild the original message grouping.
+pub fn input_item_with_boundary(
+    value: &Value,
+    kind: UnifiedInputItemKind,
+    index: usize,
+    keys: &[&str],
+    protocol: UnifiedSourceProtocol,
+    boundary: Option<UnifiedMessageBoundary>,
+) -> UnifiedInputItem {
     UnifiedInputItem {
         identity: Some(UnifiedItemIdentity {
             internal_id: format!("input-{index}"),
             source_id: value_string(value, "id"),
         }),
         status: value_string(value, "status"),
-        message: None,
+        message: boundary,
         source_extensions: source_extensions(value, keys, protocol),
         kind,
     }
