@@ -1,9 +1,650 @@
-use serde::Deserialize;
-use std::collections::{HashMap, HashSet};
+use secrecy::SecretString;
+use serde::de::{MapAccess, Visitor};
+use serde::{Deserialize, Deserializer};
+use serde_json::Value;
+use std::collections::{BTreeMap, HashSet};
 use std::error::Error;
 use std::fmt;
+use std::marker::PhantomData;
+use std::path::PathBuf;
+use url::Url;
 
+use crate::api::EndpointKind;
+use crate::dialects::Dialect;
 use crate::tls::TlsConfig;
+use crate::upstreams::Upstream;
+
+/// Environment-specific connection instance, independent of a model.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectionConfig {
+    /// Explicit vendor integration selected without URL inference.
+    pub upstream: Upstream,
+    /// Base API endpoint for HTTP integrations.
+    pub base_url: Option<Url>,
+    /// Optional HTTP version override for OpenAI-compatible HTTP connections.
+    #[serde(default)]
+    pub http_version: Option<HttpVersion>,
+    /// Authentication configuration.
+    pub auth: Option<AuthConfig>,
+    /// AWS region for Bedrock.
+    pub aws_region: Option<String>,
+    /// Bedrock bearer credentials.
+    pub aws_bearer_token: Option<SecretString>,
+    /// Vertex project identity.
+    pub project_id: Option<String>,
+    /// Vertex region/location.
+    pub location: Option<String>,
+    /// Vertex service-account credentials path.
+    pub credentials_file: Option<PathBuf>,
+}
+
+/// HTTP version supported for OpenAI-compatible upstream connections.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+pub enum HttpVersion {
+    /// Force HTTP/1.1 instead of negotiating HTTP/2.
+    #[serde(rename = "1.1")]
+    Http11,
+}
+
+/// One logical model and its unique upstream connection.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelConfig {
+    /// Canonical model identity; defaults to the public map key.
+    pub model: Option<String>,
+    /// Exactly one upstream binding.
+    pub upstream: ModelUpstreamConfig,
+    /// Explicit upstream API dialect for this model route; defaults to the integration rule.
+    pub dialect: Option<Dialect>,
+    /// Explicit paths for opaque, non-conversation forwarding.
+    pub serve: Option<Vec<String>>,
+    /// Public response identity policy.
+    pub response_model: Option<String>,
+}
+
+/// Environment binding; route-level dialect selection is validated against the concrete integration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelUpstreamConfig {
+    /// Connection instance map key.
+    pub provider: String,
+    /// Vendor model/deployment identity; defaults to canonical model identity.
+    pub model: Option<String>,
+    /// Optional diagnostic name, derived from connection and upstream model otherwise.
+    pub label: Option<String>,
+}
+
+/// New map-based configuration, independently validated before runtime migration.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelRegistryConfig {
+    /// Environment connection instances.
+    #[serde(default, deserialize_with = "deserialize_unique_map")]
+    pub providers: BTreeMap<String, ConnectionConfig>,
+    /// Each public model has exactly one upstream connection.
+    #[serde(default, deserialize_with = "deserialize_unique_map")]
+    pub models: BTreeMap<String, ModelConfig>,
+}
+
+fn deserialize_unique_map<'de, D, T>(deserializer: D) -> Result<BTreeMap<String, T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    struct UniqueMap<T>(PhantomData<T>);
+    impl<'de, T: Deserialize<'de>> Visitor<'de> for UniqueMap<T> {
+        type Value = BTreeMap<String, T>;
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a map with unique connection/model names")
+        }
+        fn visit_map<A: MapAccess<'de>>(self, mut access: A) -> Result<Self::Value, A::Error> {
+            use serde::de::Error;
+            let mut values = BTreeMap::new();
+            while let Some((key, value)) = access.next_entry::<String, T>()? {
+                if values.insert(key.clone(), value).is_some() {
+                    return Err(A::Error::custom(format!(
+                        "duplicate configuration name: {key}"
+                    )));
+                }
+            }
+            Ok(values)
+        }
+    }
+    deserializer.deserialize_map(UniqueMap(PhantomData))
+}
+
+impl ModelRegistryConfig {
+    /// Compile startup bindings without falling back to legacy configuration.
+    pub fn compile(&self) -> Result<Vec<ProviderConfig>, ConfigError> {
+        compile_model_entries(&self.providers, &self.models)
+    }
+}
+
+/// Model identity and stable connection resolved without inspecting a request.
+#[derive(Debug, Clone)]
+pub struct ModelBinding {
+    /// Public API model identity.
+    pub public_model: String,
+    /// Canonical model identity, independent of the public alias and deployment ID.
+    pub model: String,
+    /// Connection key.
+    pub provider: String,
+    /// Explicit vendor integration.
+    pub upstream: Upstream,
+    /// Vendor deployment/model ID.
+    pub upstream_model: String,
+    /// Selected once, or absent for opaque forwarding.
+    pub dialect: Option<Dialect>,
+    /// Stable diagnostic label.
+    pub label: String,
+}
+
+/// Resolve unique model bindings and derived labels using the new map schema.
+pub fn resolve_model_bindings(
+    providers: &BTreeMap<String, ConnectionConfig>,
+    models: &BTreeMap<String, ModelConfig>,
+) -> Result<Vec<ModelBinding>, ConfigError> {
+    for name in providers.keys() {
+        if name.trim().is_empty() {
+            return Err(ConfigError::InvalidProvider(
+                "connection name cannot be empty".into(),
+            ));
+        }
+    }
+    let mut normalized = HashSet::new();
+    let mut bindings = Vec::with_capacity(models.len());
+    for (public_model, model) in models {
+        if public_model.trim().is_empty() || !normalized.insert(public_model.to_ascii_lowercase()) {
+            return Err(ConfigError::InvalidProvider(format!(
+                "empty or duplicate public model: {public_model}"
+            )));
+        }
+        let provider = providers.get(&model.upstream.provider).ok_or_else(|| {
+            ConfigError::InvalidProvider(format!(
+                "unknown connection {} for {public_model}",
+                model.upstream.provider
+            ))
+        })?;
+        if provider.http_version.is_some()
+            && !matches!(
+                provider.upstream,
+                Upstream::Tokenhub
+                    | Upstream::AzureOpenai
+                    | Upstream::VolcengineArk
+                    | Upstream::OpenaiCompatible
+                    | Upstream::Vllm
+            )
+        {
+            return Err(ConfigError::InvalidProvider(format!(
+                "http_version is only supported for OpenAI-compatible upstreams: {}",
+                model.upstream.provider
+            )));
+        }
+        let canonical = model.model.as_deref().unwrap_or(public_model);
+        let upstream_model = model.upstream.model.as_deref().unwrap_or(canonical);
+        if canonical.trim().is_empty() || upstream_model.trim().is_empty() {
+            return Err(ConfigError::InvalidProvider(format!(
+                "empty model identity for {public_model}"
+            )));
+        }
+        if model
+            .upstream
+            .label
+            .as_ref()
+            .is_some_and(|label| label.trim().is_empty())
+        {
+            return Err(ConfigError::InvalidProvider(format!(
+                "empty label for {public_model}"
+            )));
+        }
+        parse_response_model_mode(model.response_model.as_deref())
+            .map_err(ConfigError::InvalidProvider)?;
+        let dialect = if let Some(paths) = &model.serve {
+            if model.dialect.is_some() {
+                return Err(ConfigError::InvalidProvider(format!(
+                    "dialect cannot be set for opaque forwarding model {public_model}"
+                )));
+            }
+            if paths.is_empty() {
+                return Err(ConfigError::InvalidProvider(format!(
+                    "empty forwarding paths for {public_model}"
+                )));
+            }
+            None
+        } else {
+            let selected = model
+                .dialect
+                .or_else(|| default_dialect(provider.upstream))
+                .ok_or_else(|| {
+                    ConfigError::InvalidProvider(format!(
+                        "dialect must be explicitly declared for model route {public_model}"
+                    ))
+                })?;
+            if !upstream_supports_dialect(provider.upstream, selected) {
+                return Err(ConfigError::InvalidProvider(format!(
+                    "dialect {selected:?} is not supported by {:?} for {canonical}",
+                    provider.upstream
+                )));
+            }
+            Some(selected)
+        };
+        let label = model
+            .upstream
+            .label
+            .clone()
+            .unwrap_or_else(|| format!("{}.{}", model.upstream.provider, upstream_model));
+        bindings.push(ModelBinding {
+            public_model: public_model.clone(),
+            model: canonical.to_owned(),
+            provider: model.upstream.provider.clone(),
+            upstream: provider.upstream,
+            upstream_model: upstream_model.to_owned(),
+            dialect,
+            label,
+        });
+    }
+    Ok(bindings)
+}
+
+fn default_dialect(upstream: Upstream) -> Option<Dialect> {
+    match upstream {
+        Upstream::Tokenhub
+        | Upstream::AzureOpenai
+        | Upstream::VolcengineArk
+        | Upstream::OpenaiCompatible
+        | Upstream::Vllm => Some(Dialect::OpenAiChatCompletions),
+        Upstream::AwsBedrock => Some(Dialect::BedrockConverse),
+        Upstream::GoogleVertex => Some(Dialect::GeminiGenerateContent),
+        Upstream::Custom => None,
+    }
+}
+
+fn upstream_supports_dialect(upstream: Upstream, dialect: Dialect) -> bool {
+    match upstream {
+        Upstream::Tokenhub | Upstream::AzureOpenai | Upstream::VolcengineArk => matches!(
+            dialect,
+            Dialect::OpenAiChatCompletions | Dialect::OpenAiResponses
+        ),
+        Upstream::OpenaiCompatible | Upstream::Vllm => dialect == Dialect::OpenAiChatCompletions,
+        Upstream::AwsBedrock => dialect == Dialect::BedrockConverse,
+        Upstream::GoogleVertex => dialect == Dialect::GeminiGenerateContent,
+        Upstream::Custom => false,
+    }
+}
+
+/// Compile the new connection/model maps into startup-resolved clients.
+/// The returned entries are internal connection facts, not a legacy YAML schema.
+pub fn compile_model_entries(
+    connections: &BTreeMap<String, ConnectionConfig>,
+    models: &BTreeMap<String, ModelConfig>,
+) -> Result<Vec<ProviderConfig>, ConfigError> {
+    let bindings = resolve_model_bindings(connections, models)?;
+    let mut entries = Vec::with_capacity(bindings.len());
+    for binding in bindings {
+        let connection = &connections[&binding.provider];
+        let model = &models[&binding.public_model];
+        let missing = |field: &str| {
+            ConfigError::InvalidProvider(format!("{} requires {field}", binding.provider))
+        };
+        let base_url = || {
+            connection
+                .base_url
+                .clone()
+                .ok_or_else(|| missing("base_url"))
+        };
+        let Some(dialect) = binding.dialect else {
+            continue;
+        };
+        let kind = match dialect {
+            Dialect::OpenAiChatCompletions => ProviderKind::OpenAiChatCompletions,
+            Dialect::OpenAiResponses => ProviderKind::OpenAiResponses,
+            Dialect::AnthropicMessages => ProviderKind::AnthropicMessages,
+            Dialect::BedrockConverse => ProviderKind::BedrockConverse,
+            Dialect::GeminiGenerateContent => ProviderKind::GoogleVertex,
+        };
+        let params = match kind {
+            ProviderKind::OpenAiChatCompletions | ProviderKind::OpenAiResponses => {
+                let params = OpenAiParams {
+                    base_url: base_url()?,
+                    auth: connection.auth.clone(),
+                    model: binding.upstream_model.clone(),
+                    response_model: model.response_model.clone(),
+                    http_version: connection.http_version,
+                };
+                if kind == ProviderKind::OpenAiChatCompletions {
+                    ProviderKindParams::OpenAiChatCompletions(params)
+                } else {
+                    ProviderKindParams::OpenAiResponses(params)
+                }
+            }
+            ProviderKind::AnthropicMessages => {
+                return Err(ConfigError::InvalidProvider(format!(
+                    "anthropic-messages dialect is not available for {}",
+                    binding.public_model
+                )));
+            }
+            ProviderKind::BedrockConverse => ProviderKindParams::BedrockConverse(BedrockParams {
+                model: binding.upstream_model.clone(),
+                aws_region: connection
+                    .aws_region
+                    .clone()
+                    .ok_or_else(|| missing("aws_region"))?,
+                aws_bearer_token: connection
+                    .aws_bearer_token
+                    .clone()
+                    .ok_or_else(|| missing("aws_bearer_token"))?,
+            }),
+            ProviderKind::GoogleVertex => ProviderKindParams::GoogleVertex(GoogleVertexParams {
+                model: binding.upstream_model.clone(),
+                project_id: connection
+                    .project_id
+                    .clone()
+                    .ok_or_else(|| missing("project_id"))?,
+                location: connection
+                    .location
+                    .clone()
+                    .ok_or_else(|| missing("location"))?,
+                credentials_file: connection
+                    .credentials_file
+                    .clone()
+                    .ok_or_else(|| missing("credentials_file"))?,
+            }),
+        };
+        entries.push(ProviderConfig {
+            model_id: binding.public_model.clone(),
+            kind,
+            label: Some(binding.label.clone()),
+            params,
+            binding: Some(binding),
+        });
+    }
+    Ok(entries)
+}
+
+#[cfg(test)]
+mod binding_tests {
+    use super::*;
+
+    #[test]
+    fn duplicate_model_and_connection_names_are_rejected_before_overwriting() {
+        for raw in [
+            r#"{"providers":{"connection":{"upstream":"custom"},"connection":{"upstream":"custom"}}}"#,
+            r#"{"models":{"m":{"upstream":{"provider":"p"}},"m":{"upstream":{"provider":"p"}}}}"#,
+        ] {
+            assert!(serde_json::from_str::<ModelRegistryConfig>(raw).is_err());
+            assert!(serde_json::from_str::<ServeConfig>(raw).is_err());
+        }
+    }
+
+    #[test]
+    fn ambiguous_or_missing_credential_sources_are_rejected_without_exposing_secrets() {
+        for value in [
+            serde_json::json!({"scheme":"bearer"}),
+            serde_json::json!({"scheme":"bearer", "api_key_env":""}),
+            serde_json::json!({"scheme":"bearer", "api_key":"private-test-value", "api_key_env":"TOKEN"}),
+        ] {
+            let error = serde_json::from_value::<AuthConfig>(value).expect_err("invalid source");
+            assert!(!error.to_string().contains("private-test-value"));
+        }
+    }
+
+    fn connection() -> ConnectionConfig {
+        serde_json::from_value(serde_json::json!({
+            "upstream": "tokenhub", "base_url": "https://example.test/v1"
+        }))
+        .expect("connection")
+    }
+
+    #[test]
+    fn vllm_upstream_compiles_as_openai_chat_for_vllm_and_sglang() {
+        let connection = serde_json::from_value(serde_json::json!({
+            "upstream": "vllm",
+            "base_url": "http://localhost:8000/v1"
+        }))
+        .expect("self-hosted connection");
+        let providers = BTreeMap::from([("local".to_owned(), connection)]);
+        let models = serde_json::from_value(serde_json::json!({
+            "deepseek": {"upstream":{"provider":"local"}}
+        }))
+        .expect("model map");
+
+        let entries = compile_model_entries(&providers, &models).expect("compiled entry");
+        assert_eq!(entries[0].kind, ProviderKind::OpenAiChatCompletions);
+        assert_eq!(
+            entries[0].binding.as_ref().expect("model binding").upstream,
+            Upstream::Vllm
+        );
+    }
+
+    #[test]
+    fn http_version_is_carried_to_openai_provider_params() {
+        let providers = serde_json::from_value(serde_json::json!({
+            "volcengine.cn": {
+                "upstream": "volcengine-ark",
+                "base_url": "https://ark.example.com/v1",
+                "http_version": "1.1"
+            }
+        }))
+        .expect("provider map");
+        let models = serde_json::from_value(serde_json::json!({
+            "glm-5.3": {"upstream": {"provider": "volcengine.cn", "model": "glm-5-3-260814"}}
+        }))
+        .expect("model map");
+
+        let entries = compile_model_entries(&providers, &models).expect("compiled entry");
+        let ProviderKindParams::OpenAiChatCompletions(params) = &entries[0].params else {
+            panic!("expected chat completion params");
+        };
+        assert_eq!(params.http_version, Some(HttpVersion::Http11));
+    }
+
+    #[test]
+    fn http_version_rejects_non_openai_upstream() {
+        let providers = serde_json::from_value(serde_json::json!({
+            "google.global": {
+                "upstream": "google-vertex",
+                "http_version": "1.1",
+                "project_id": "project",
+                "location": "global",
+                "credentials_file": "/not-read-during-binding"
+            }
+        }))
+        .expect("provider map");
+        let models = serde_json::from_value(serde_json::json!({
+            "gemini": {"upstream": {"provider": "google.global"}}
+        }))
+        .expect("model map");
+
+        let error = resolve_model_bindings(&providers, &models).expect_err("invalid protocol");
+        assert!(
+            error
+                .to_string()
+                .contains("only supported for OpenAI-compatible")
+        );
+    }
+
+    #[test]
+    fn http_version_rejects_unsupported_value() {
+        let error = serde_json::from_value::<ConnectionConfig>(serde_json::json!({
+            "upstream": "volcengine-ark",
+            "http_version": "2"
+        }))
+        .expect_err("HTTP/2 is not an override supported by this setting");
+
+        assert!(error.to_string().contains("unknown variant"));
+    }
+
+    #[test]
+    fn alias_canonical_model_and_deployment_id_remain_distinct() {
+        let providers = BTreeMap::from([("qcloud.cn".to_owned(), connection())]);
+        let models = serde_json::from_value(serde_json::json!({
+            "fast": {"model":"glm-5.3-flash", "upstream": {
+                "provider":"qcloud.cn", "model":"vendor-model-id"
+            }}
+        }))
+        .expect("models");
+        let bindings = resolve_model_bindings(&providers, &models).expect("binding");
+        let binding = &bindings[0];
+        assert_eq!(binding.public_model, "fast");
+        assert_eq!(binding.model, "glm-5.3-flash");
+        assert_eq!(binding.upstream_model, "vendor-model-id");
+        assert_eq!(binding.dialect, Some(Dialect::OpenAiChatCompletions));
+        assert_eq!(binding.label, "qcloud.cn.vendor-model-id");
+    }
+
+    #[test]
+    fn defaults_and_explicit_labels_preserve_stable_identity() {
+        let providers = BTreeMap::from([("qcloud.cn".to_owned(), connection())]);
+        let models = serde_json::from_value(serde_json::json!({
+            "glm-5.3-flash": {"upstream":{"provider":"qcloud.cn", "label":"existing-label"}}
+        }))
+        .expect("models");
+        let bindings = resolve_model_bindings(&providers, &models).expect("binding");
+        assert_eq!(bindings[0].model, "glm-5.3-flash");
+        assert_eq!(bindings[0].upstream_model, "glm-5.3-flash");
+        assert_eq!(bindings[0].label, "existing-label");
+    }
+
+    #[test]
+    fn unknown_models_are_allowed_but_missing_connections_are_rejected() {
+        let providers = BTreeMap::from([("qcloud.cn".to_owned(), connection())]);
+        let unknown = serde_json::from_value(serde_json::json!({
+            "private-model":{"upstream":{"provider":"qcloud.cn"}}
+        }))
+        .expect("model schema");
+        assert!(resolve_model_bindings(&providers, &unknown).is_ok());
+
+        let missing = serde_json::from_value(serde_json::json!({
+            "glm-5.3-flash":{"upstream":{"provider":"missing"}}
+        }))
+        .expect("model schema");
+        assert!(resolve_model_bindings(&providers, &missing).is_err());
+    }
+
+    #[test]
+    fn forwarding_does_not_invent_conversation_capabilities() {
+        let providers = BTreeMap::from([("qcloud.cn".to_owned(), connection())]);
+        let models = serde_json::from_value(serde_json::json!({
+            "embedding": {"upstream":{"provider":"qcloud.cn"}, "serve":["/embeddings"]}
+        }))
+        .expect("model schema");
+        let bindings = resolve_model_bindings(&providers, &models).expect("opaque binding");
+        assert_eq!(bindings[0].dialect, None);
+    }
+
+    #[test]
+    fn route_dialect_defaults_by_upstream_and_checks_protocol_compatibility() {
+        let azure = serde_json::from_value(serde_json::json!({
+            "upstream": "azure-openai",
+            "base_url": "https://example.test/v1"
+        }))
+        .expect("Azure connection");
+        let providers = BTreeMap::from([("azure".to_owned(), azure)]);
+        let models = serde_json::from_value(serde_json::json!({
+            "gpt-5.6-sol": {
+                "upstream": {"provider":"azure"},
+                "dialect":"openai-responses"
+            }
+        }))
+        .expect("models");
+        let bindings = resolve_model_bindings(&providers, &models).expect("binding");
+        assert_eq!(bindings[0].dialect, Some(Dialect::OpenAiResponses));
+        let entries = compile_model_entries(&providers, &models).expect("compile");
+        assert_eq!(entries[0].kind, ProviderKind::OpenAiResponses);
+
+        let defaulted_dialect = serde_json::from_value(serde_json::json!({
+            "gpt-5.6-sol": {"upstream":{"provider":"azure"}}
+        }))
+        .expect("models");
+        let bindings =
+            resolve_model_bindings(&providers, &defaulted_dialect).expect("default binding");
+        assert_eq!(bindings[0].dialect, Some(Dialect::OpenAiChatCompletions));
+
+        let unsupported_chat = serde_json::from_value(serde_json::json!({
+            "gpt-5.6-sol": {
+                "upstream": {"provider":"azure"},
+                "dialect":"openai-chat-completions"
+            }
+        }))
+        .expect("models");
+        assert!(resolve_model_bindings(&providers, &unsupported_chat).is_ok());
+
+        let unsupported_models = serde_json::from_value(serde_json::json!({
+            "gpt-5.5": {
+                "upstream": {"provider":"azure"},
+                "dialect":"openai-responses"
+            }
+        }))
+        .expect("models");
+        assert!(resolve_model_bindings(&providers, &unsupported_models).is_ok());
+
+        let vertex = serde_json::from_value(serde_json::json!({
+            "upstream": "google-vertex",
+            "project_id": "project",
+            "location": "global",
+            "credentials_file": "/tmp/credentials.json"
+        }))
+        .expect("Vertex connection");
+        let vertex_providers = BTreeMap::from([("vertex".to_owned(), vertex)]);
+        let mismatched_dialect = serde_json::from_value(serde_json::json!({
+            "private-model": {
+                "upstream":{"provider":"vertex"},
+                "dialect":"openai-chat-completions"
+            }
+        }))
+        .expect("model");
+        assert!(resolve_model_bindings(&vertex_providers, &mismatched_dialect).is_err());
+        assert!(
+            serde_json::from_value::<ModelConfig>(serde_json::json!({
+                "upstream":{"provider":"azure"},
+                "dialect":"openai-future"
+            }))
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn explicit_dialect_is_not_allowed_for_opaque_forwarding() {
+        let providers = BTreeMap::from([("qcloud.cn".to_owned(), connection())]);
+        let models = serde_json::from_value(serde_json::json!({
+            "embedding": {
+                "upstream":{"provider":"qcloud.cn"},
+                "serve":["/embeddings"],
+                "dialect":"openai-responses"
+            }
+        }))
+        .expect("models");
+        assert!(resolve_model_bindings(&providers, &models).is_err());
+    }
+
+    #[test]
+    fn binding_rejects_upstream_protocol_selection_and_multiple_connections() {
+        for value in [
+            serde_json::json!({"upstream":{"provider":"qcloud.cn", "protocol":"openai-responses"}}),
+            serde_json::json!({"upstreams":[{"provider":"qcloud.cn"}]}),
+        ] {
+            assert!(serde_json::from_value::<ModelConfig>(value).is_err());
+        }
+    }
+
+    #[test]
+    fn compiles_single_binding_without_changing_public_or_vendor_identity() {
+        let providers = BTreeMap::from([("qcloud.cn".to_owned(), connection())]);
+        let models = serde_json::from_value(serde_json::json!({
+            "fast": {"model":"glm-5.3-flash", "upstream":{"provider":"qcloud.cn", "model":"vendor-id"}}
+        })).expect("models");
+        let entries = compile_model_entries(&providers, &models).expect("compile");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].model_id, "fast");
+        assert_eq!(entries[0].kind, ProviderKind::OpenAiChatCompletions);
+        let ProviderKindParams::OpenAiChatCompletions(params) = &entries[0].params else {
+            panic!("chat parameters");
+        };
+        assert_eq!(params.model, "vendor-id");
+        assert_eq!(entries[0].label.as_deref(), Some("qcloud.cn.vendor-id"));
+    }
+}
 
 #[derive(Debug)]
 pub enum ConfigError {
@@ -26,77 +667,56 @@ impl fmt::Display for ConfigError {
 
 impl Error for ConfigError {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum EndpointKind {
-    ChatCompletions,
-    SystemOne,
-    Messages,
-    Responses,
-    Embeddings,
-    Rerank,
-    AudioSpeech,
-    AudioTranscriptions,
-    ImagesGenerations,
-    ImagesEdits,
-    ModelsGenerateContent,
-}
-
-impl EndpointKind {
-    pub fn as_path(&self) -> &'static str {
-        match self {
-            EndpointKind::ChatCompletions => "/chat/completions",
-            EndpointKind::SystemOne => "/systemone",
-            EndpointKind::Messages => "/messages",
-            EndpointKind::Responses => "/responses",
-            EndpointKind::Embeddings => "/embeddings",
-            EndpointKind::Rerank => "/rerank",
-            EndpointKind::AudioSpeech => "/audio/speech",
-            EndpointKind::AudioTranscriptions => "/audio/transcriptions",
-            EndpointKind::ImagesGenerations => "/images/generations",
-            EndpointKind::ImagesEdits => "/images/edits",
-            EndpointKind::ModelsGenerateContent => "/models/:generateContent",
-        }
-    }
-
-    pub fn from_config_path(path: &str) -> Result<Self, ConfigError> {
-        Self::from_path(path)
-            .ok_or_else(|| ConfigError::InvalidProvider(format!("unknown endpoint path: {path}")))
-    }
-
-    pub fn from_request_path(path: &str) -> Option<Self> {
-        if parse_generate_content_model(path).is_some() {
-            return Some(Self::ModelsGenerateContent);
-        }
-        Self::from_path(path)
-    }
-
-    fn from_path(path: &str) -> Option<Self> {
-        match path {
-            "/chat/completions" => Some(Self::ChatCompletions),
-            "/systemone" => Some(Self::SystemOne),
-            "/messages" => Some(Self::Messages),
-            "/responses" => Some(Self::Responses),
-            "/embeddings" => Some(Self::Embeddings),
-            "/rerank" => Some(Self::Rerank),
-            "/audio/speech" => Some(Self::AudioSpeech),
-            "/audio/transcriptions" => Some(Self::AudioTranscriptions),
-            "/images/generations" => Some(Self::ImagesGenerations),
-            "/images/edits" => Some(Self::ImagesEdits),
-            "/models/:generateContent" => Some(Self::ModelsGenerateContent),
-            _ => None,
-        }
-    }
-}
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone)]
 pub struct ServeConfig {
     pub auth_token: Option<String>,
     pub zipper: ZipperConfig,
     pub http_api: HttpApiConfig,
-    #[serde(default = "default_providers")]
+    pub defaults: DefaultsConfig,
     pub providers: Vec<ProviderConfig>,
-    #[serde(default = "default_endpoints")]
-    pub endpoints: Vec<EndpointConfig>,
+    /// Named connection definitions used to compile the internal entries.
+    pub connections: BTreeMap<String, ConnectionConfig>,
+    /// Public model definitions with one upstream each.
+    pub models: BTreeMap<String, ModelConfig>,
+}
+
+impl<'de> Deserialize<'de> for ServeConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error as DeError;
+        #[derive(Deserialize, Default)]
+        #[serde(default)]
+        struct Fields {
+            auth_token: Option<String>,
+            zipper: ZipperConfig,
+            http_api: HttpApiConfig,
+            defaults: DefaultsConfig,
+            #[serde(deserialize_with = "deserialize_unique_map")]
+            providers: BTreeMap<String, ConnectionConfig>,
+            #[serde(deserialize_with = "deserialize_unique_map")]
+            models: BTreeMap<String, ModelConfig>,
+            endpoints: Option<Value>,
+        }
+        let fields = Fields::deserialize(deserializer)?;
+        if fields.endpoints.is_some() {
+            return Err(DeError::custom(
+                "endpoints configuration is no longer supported; use models and serve",
+            ));
+        }
+        let providers =
+            compile_model_entries(&fields.providers, &fields.models).map_err(DeError::custom)?;
+        Ok(Self {
+            auth_token: fields.auth_token,
+            zipper: fields.zipper,
+            http_api: fields.http_api,
+            defaults: fields.defaults,
+            providers,
+            connections: fields.providers,
+            models: fields.models,
+        })
+    }
 }
 
 impl Default for ServeConfig {
@@ -105,30 +725,298 @@ impl Default for ServeConfig {
             auth_token: None,
             zipper: ZipperConfig::default(),
             http_api: HttpApiConfig::default(),
+            defaults: DefaultsConfig::default(),
             providers: default_providers(),
-            endpoints: default_endpoints(),
+            connections: BTreeMap::new(),
+            models: BTreeMap::new(),
         }
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(default)]
-pub struct ProviderConfig {
-    #[serde(rename = "type")]
-    pub provider_type: String,
-    pub model_id: String,
-    pub label: Option<String>,
-    pub response_model: Option<String>,
-    pub params: HashMap<String, String>,
+/// Upstream dialect, split by protocol rather than vendor and mapped one-to-one to config `type`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderKind {
+    OpenAiChatCompletions,
+    OpenAiResponses,
+    AnthropicMessages,
+    BedrockConverse,
+    GoogleVertex,
 }
 
+impl ProviderKind {
+    /// The config `type` name (kebab-case).
+    pub fn as_config_type(&self) -> &'static str {
+        match self {
+            ProviderKind::OpenAiChatCompletions => "openai-chat-completions",
+            ProviderKind::OpenAiResponses => "openai-responses",
+            ProviderKind::AnthropicMessages => "anthropic-messages",
+            ProviderKind::BedrockConverse => "bedrock-converse",
+            ProviderKind::GoogleVertex => "google-vertex",
+        }
+    }
+
+    /// Parse from the config `type` name (strict full-word match).
+    pub fn from_config_type(value: &str) -> Option<Self> {
+        match value {
+            "openai-chat-completions" => Some(ProviderKind::OpenAiChatCompletions),
+            "openai-responses" => Some(ProviderKind::OpenAiResponses),
+            "anthropic-messages" => Some(ProviderKind::AnthropicMessages),
+            "bedrock-converse" | "bedrock-converse-stream" => Some(ProviderKind::BedrockConverse),
+            "google-vertex" => Some(ProviderKind::GoogleVertex),
+            _ => None,
+        }
+    }
+}
+
+/// Authentication scheme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AuthScheme {
+    Bearer,
+    ApiKey,
+}
+
+/// Authentication config. `api_key` is sensitive; Debug output redacts it automatically.
+#[derive(Debug, Clone)]
+pub struct AuthConfig {
+    pub scheme: AuthScheme,
+    pub api_key: SecretString,
+}
+
+impl<'de> Deserialize<'de> for AuthConfig {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error as DeError;
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            scheme: AuthScheme,
+            api_key: Option<SecretString>,
+            api_key_env: Option<String>,
+        }
+        let fields = Fields::deserialize(deserializer)?;
+        let api_key = match (fields.api_key, fields.api_key_env) {
+            (Some(key), None) => key,
+            (None, Some(name)) if !name.trim().is_empty() => {
+                let value = std::env::var(&name).map_err(|_| {
+                    DeError::custom(format!("missing credential environment variable {name}"))
+                })?;
+                if value.trim().is_empty() {
+                    return Err(DeError::custom(format!(
+                        "empty credential environment variable {name}"
+                    )));
+                }
+                SecretString::from(value)
+            }
+            _ => {
+                return Err(DeError::custom(
+                    "auth requires exactly one of api_key or api_key_env",
+                ));
+            }
+        };
+        Ok(Self {
+            scheme: fields.scheme,
+            api_key,
+        })
+    }
+}
+
+/// Connection params for the openai-family dialects (openai-chat-completions / openai-responses).
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpenAiParams {
+    pub base_url: Url,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<AuthConfig>,
+    pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_version: Option<HttpVersion>,
+}
+
+/// bedrock-converse connection params.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BedrockParams {
+    pub model: String,
+    pub aws_region: String,
+    pub aws_bearer_token: SecretString,
+}
+
+/// google-vertex connection params.
+#[derive(Debug, Clone, Deserialize)]
+pub struct GoogleVertexParams {
+    pub model: String,
+    pub project_id: String,
+    pub location: String,
+    pub credentials_file: PathBuf,
+}
+
+/// Global defaults: `defaults.model` is the single fallback model
+/// used when a chat request omits `model`.
+#[derive(Debug, Clone, Deserialize, Default, PartialEq)]
+#[serde(default)]
+pub struct DefaultsConfig {
+    pub model: Option<String>,
+}
+
+/// Connection params per dialect kind, dispatched to concrete structs by kind and validated by deserialization.
+#[derive(Debug, Clone)]
+pub enum ProviderKindParams {
+    OpenAiChatCompletions(OpenAiParams),
+    OpenAiResponses(OpenAiParams),
+    BedrockConverse(BedrockParams),
+    GoogleVertex(GoogleVertexParams),
+}
+
+/// Strongly typed provider connection configuration.
+///
+/// `type`/`model_id` sit at the entry top level with connection params nested under `params`;
+/// the concrete params struct is decided by kind and mismatches error with field names.
+#[derive(Debug, Clone)]
+pub struct ProviderConfig {
+    pub model_id: String,
+    pub kind: ProviderKind,
+    /// Display label (o11y / agent-loop), optional.
+    pub label: Option<String>,
+    pub params: ProviderKindParams,
+    /// Explicit vendor/model identity retained after startup compilation.
+    pub binding: Option<ModelBinding>,
+}
+
+impl<'de> Deserialize<'de> for ProviderConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        use serde::de::Error as DeError;
+
+        let value = Value::deserialize(deserializer)?;
+        let object = value
+            .as_object()
+            .ok_or_else(|| DeError::custom("provider entry must be a mapping"))?;
+
+        let model_id = object
+            .get("model_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| DeError::missing_field("model_id"))?
+            .to_string();
+        let type_name = object
+            .get("type")
+            .and_then(Value::as_str)
+            .ok_or_else(|| DeError::missing_field("type"))?;
+        let kind = ProviderKind::from_config_type(type_name)
+            .ok_or_else(|| DeError::custom(format!("unknown provider type: {type_name}")))?;
+        let params_value = object
+            .get("params")
+            .cloned()
+            .ok_or_else(|| DeError::missing_field("params"))?;
+        let params = match kind {
+            ProviderKind::OpenAiChatCompletions => ProviderKindParams::OpenAiChatCompletions(
+                serde_json::from_value(params_value).map_err(DeError::custom)?,
+            ),
+            ProviderKind::OpenAiResponses => ProviderKindParams::OpenAiResponses(
+                serde_json::from_value(params_value).map_err(DeError::custom)?,
+            ),
+            ProviderKind::AnthropicMessages => {
+                return Err(DeError::custom(
+                    "provider type anthropic-messages is not available",
+                ));
+            }
+            ProviderKind::BedrockConverse => ProviderKindParams::BedrockConverse(
+                serde_json::from_value(params_value).map_err(DeError::custom)?,
+            ),
+            ProviderKind::GoogleVertex => ProviderKindParams::GoogleVertex(
+                serde_json::from_value(params_value).map_err(DeError::custom)?,
+            ),
+        };
+
+        let label = object
+            .get("label")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        Ok(Self {
+            model_id,
+            kind,
+            label,
+            params,
+            binding: None,
+        })
+    }
+}
+
+/// Derive the endpoint table from typed entries.
+///
+/// Dialect kinds automatically serve the three chat endpoints. `defaults.model` becomes the default model
+/// of the three chat endpoints (the single global fallback).
+pub fn derive_endpoints_from_typed(
+    typed: &[ProviderConfig],
+    defaults: &DefaultsConfig,
+) -> Vec<EndpointConfig> {
+    use std::collections::HashMap;
+
+    fn ensure<'a>(
+        by_path: &'a mut HashMap<String, EndpointConfig>,
+        path: &str,
+    ) -> &'a mut EndpointConfig {
+        by_path
+            .entry(path.to_string())
+            .or_insert_with(|| EndpointConfig {
+                path: path.to_string(),
+                models: Vec::new(),
+                default_model: None,
+            })
+    }
+    let mut by_path: HashMap<String, EndpointConfig> = HashMap::new();
+
+    let chat_paths = [
+        EndpointKind::ChatCompletions.as_path(),
+        EndpointKind::Responses.as_path(),
+        EndpointKind::Messages.as_path(),
+    ];
+
+    for provider in typed {
+        for path in chat_paths {
+            ensure(&mut by_path, path)
+                .models
+                .push(provider.model_id.clone());
+        }
+    }
+
+    let default_model = defaults
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(str::to_string);
+    if let Some(default_model) = default_model {
+        for path in chat_paths {
+            if let Some(endpoint) = by_path.get_mut(path) {
+                endpoint.default_model = Some(default_model.clone());
+            }
+        }
+    }
+
+    let mut endpoints: Vec<EndpointConfig> = by_path.into_values().collect();
+    endpoints.sort_by(|a, b| a.path.cmp(&b.path));
+    endpoints
+}
+
+impl ProviderConfig {
+    pub fn model_id(&self) -> &str {
+        &self.model_id
+    }
+}
+
+/// How the `model` field in responses is chosen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResponseModelMode {
+    /// Preserve the upstream model name, falling back to the routed model.
     Upstream,
-    Routed,
+    /// Always return the configured model name.
     Fixed(String),
 }
 
+/// Parse `response_model`: unset preserves the upstream name, and any
+/// non-empty string fixes the returned name.
 pub fn parse_response_model_mode(value: Option<&str>) -> Result<ResponseModelMode, String> {
     let Some(value) = value else {
         return Ok(ResponseModelMode::Upstream);
@@ -137,20 +1025,7 @@ pub fn parse_response_model_mode(value: Option<&str>) -> Result<ResponseModelMod
     if value.is_empty() {
         return Err("response_model cannot be empty".to_string());
     }
-    match value {
-        "upstream" => Ok(ResponseModelMode::Upstream),
-        "routed" => Ok(ResponseModelMode::Routed),
-        _ => {
-            if let Some(fixed_value) = value.strip_prefix("fixed:") {
-                let fixed_value = fixed_value.trim();
-                if fixed_value.is_empty() {
-                    return Err("response_model fixed target cannot be empty".to_string());
-                }
-                return Ok(ResponseModelMode::Fixed(fixed_value.to_string()));
-            }
-            Err("response_model must be one of: upstream, routed, fixed:<model_name>".to_string())
-        }
-    }
+    Ok(ResponseModelMode::Fixed(value.to_string()))
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -163,17 +1038,10 @@ pub struct EndpointConfig {
 
 impl EndpointConfig {
     pub fn endpoint(&self) -> Result<EndpointKind, ConfigError> {
-        EndpointKind::from_config_path(self.path.as_str())
+        EndpointKind::from_path(&self.path).ok_or_else(|| {
+            ConfigError::InvalidProvider(format!("unknown Agent endpoint path: {}", self.path))
+        })
     }
-}
-
-pub fn parse_generate_content_model(endpoint: &str) -> Option<String> {
-    endpoint
-        .strip_prefix("/models/")
-        .and_then(|value| value.strip_suffix(":generateContent"))
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
 }
 
 /// Default host address
@@ -191,27 +1059,11 @@ fn default_http_api_port() -> u16 {
     9001
 }
 
-/// Default providers
+/// Default providers: empty. Configs must declare providers explicitly;
+/// an empty providers table surfaces as a clear startup error instead of
+/// silently serving a sample model.
 fn default_providers() -> Vec<ProviderConfig> {
-    vec![ProviderConfig {
-        provider_type: "openai-compatible".to_string(),
-        model_id: "ornith".to_string(),
-        params: [(
-            "base_url".to_string(),
-            "http://127.0.0.1:11434/v1".to_string(),
-        )]
-        .into(),
-        ..Default::default()
-    }]
-}
-
-/// Default endpoint mapping
-fn default_endpoints() -> Vec<EndpointConfig> {
-    vec![EndpointConfig {
-        path: "/chat/completions".to_string(),
-        models: vec!["ornith".to_string()],
-        default_model: Some("ornith".to_string()),
-    }]
+    Vec::new()
 }
 
 /// Default tool api prefix
@@ -267,36 +1119,41 @@ impl ServeConfig {
     pub fn validate(&self) -> Result<(), ConfigError> {
         let mut model_ids = HashSet::new();
         for provider in &self.providers {
-            if provider.provider_type.trim().is_empty() {
-                return Err(ConfigError::InvalidProvider(format!(
-                    "provider type is required for {}",
-                    provider.model_id
-                )));
-            }
-
-            if provider.model_id.trim().is_empty() {
+            if provider.model_id().trim().is_empty() {
                 return Err(ConfigError::InvalidProvider(
                     "model_id is required for provider".to_string(),
                 ));
             }
 
-            let normalized_model_id = provider.model_id.to_ascii_lowercase();
+            let normalized_model_id = provider.model_id().to_ascii_lowercase();
             if !model_ids.insert(normalized_model_id) {
                 return Err(ConfigError::InvalidProvider(format!(
                     "duplicate model_id: {}",
-                    provider.model_id
+                    provider.model_id()
                 )));
             }
-
-            parse_response_model_mode(provider.response_model.as_deref()).map_err(|err| {
-                ConfigError::InvalidProvider(format!(
-                    "invalid response_model for {}: {}",
-                    provider.model_id, err
-                ))
-            })?;
         }
 
-        for endpoint in &self.endpoints {
+        // defaults.model must reference a known model.
+        if let Some(default_model) = self
+            .defaults
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|model| !model.is_empty())
+        {
+            if !self
+                .providers
+                .iter()
+                .any(|provider| provider.model_id().eq_ignore_ascii_case(default_model))
+            {
+                return Err(ConfigError::InvalidProvider(format!(
+                    "defaults.model not found: {default_model}"
+                )));
+            }
+        }
+
+        for endpoint in &derive_endpoints_from_typed(&self.providers, &self.defaults) {
             if endpoint.path.trim().is_empty() {
                 return Err(ConfigError::InvalidProvider(
                     "endpoint path is required".to_string(),
@@ -312,7 +1169,7 @@ impl ServeConfig {
                 if !self
                     .providers
                     .iter()
-                    .any(|provider| provider.model_id == *default_model)
+                    .any(|provider| provider.model_id().eq_ignore_ascii_case(default_model))
                 {
                     return Err(ConfigError::InvalidProvider(format!(
                         "endpoint default_model not found: {}",
@@ -324,7 +1181,7 @@ impl ServeConfig {
                 if !self
                     .providers
                     .iter()
-                    .any(|provider| provider.model_id == *model)
+                    .any(|provider| provider.model_id() == *model)
                 {
                     return Err(ConfigError::InvalidProvider(format!(
                         "endpoint model not found: {}",
@@ -339,16 +1196,210 @@ impl ServeConfig {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{EndpointKind, ResponseModelMode, parse_response_model_mode};
+mod typed_provider_schema_tests {
+    use super::{AuthScheme, ProviderConfig, ProviderKind, ProviderKindParams};
+
+    fn parse_typed(json: &str) -> Result<ProviderConfig, serde_json::Error> {
+        serde_json::from_str(json)
+    }
 
     #[test]
-    fn endpoint_kind_maps_systemone_path() {
-        let endpoint = EndpointKind::from_request_path("/systemone");
+    fn all_kinds_parse_valid_entries() {
+        let entries: Vec<ProviderConfig> = serde_json::from_str(
+            r#"[
+                {"type": "openai-chat-completions", "model_id": "glm-5.3-flash",
+                 "params": {"base_url": "https://tokenhub.example.com/v1",
+                            "auth": {"scheme": "bearer", "api_key": "sk-1"}, "model": "glm-5.3-flash"}},
+                {"type": "openai-responses", "model_id": "gpt-5.3-codex",
+                 "params": {"base_url": "https://vgllm.example.com/openai/v1",
+                            "auth": {"scheme": "api-key", "api_key": "k"}, "model": "gpt-5.3-codex"}},
+                {"type": "bedrock-converse", "model_id": "claude-opus-5",
+                 "params": {"model": "global.anthropic.claude-opus-5", "aws_region": "ap-northeast-3",
+                            "aws_bearer_token": "tok"}},
+                 {"type": "google-vertex", "model_id": "gemini-3.5-flash",
+                  "params": {"model": "gemini-3.5-flash", "project_id": "pc-1", "location": "global",
+                             "credentials_file": "/path/sa.json"}}
+            ]"#,
+        )
+        .expect("all kinds must parse");
 
-        assert_eq!(endpoint, Some(EndpointKind::SystemOne));
-        assert_eq!(EndpointKind::SystemOne.as_path(), "/systemone");
+        assert_eq!(entries.len(), 4);
     }
+
+    #[test]
+    fn kind_params_map_to_provider_kind() {
+        let typed: ProviderConfig = parse_typed(
+            r#"{"type": "openai-chat-completions", "model_id": "m",
+                "params": {"base_url": "https://x.example.com/v1",
+                           "auth": {"scheme": "bearer", "api_key": "k"}, "model": "m"}}"#,
+        )
+        .expect("parse");
+        assert_eq!(typed.kind, ProviderKind::OpenAiChatCompletions);
+        match &typed.params {
+            ProviderKindParams::OpenAiChatCompletions(params) => {
+                assert_eq!(params.base_url.as_str(), "https://x.example.com/v1");
+                let auth = params.auth.as_ref().expect("auth");
+                assert_eq!(auth.scheme, AuthScheme::Bearer);
+                assert_eq!(params.model, "m");
+                assert!(params.response_model.is_none());
+            }
+            other => panic!("unexpected kind: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn missing_required_param_field_is_rejected() {
+        let err = parse_typed(
+            r#"{"type": "openai-chat-completions", "model_id": "m",
+                "params": {"model": "m"}}"#,
+        )
+        .expect_err("missing base_url must be rejected");
+        let message = err.to_string();
+        assert!(message.contains("base_url"), "got: {message}");
+    }
+
+    #[test]
+    fn openai_kind_auth_is_optional() {
+        let typed: ProviderConfig = parse_typed(
+            r#"{"type": "openai-chat-completions", "model_id": "m",
+                "params": {"base_url": "https://x.example.com/v1", "model": "m"}}"#,
+        )
+        .expect("parse");
+        match &typed.params {
+            ProviderKindParams::OpenAiChatCompletions(params) => {
+                assert!(params.auth.is_none());
+            }
+            other => panic!("unexpected kind: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn missing_params_is_rejected() {
+        let err = parse_typed(r#"{"type": "openai-chat-completions", "model_id": "m"}"#)
+            .expect_err("missing params must be rejected");
+        assert!(err.to_string().contains("params"));
+    }
+
+    #[test]
+    fn unknown_type_does_not_parse_as_typed() {
+        let err = serde_json::from_str::<ProviderConfig>(
+            r#"{"type": "not-a-kind", "model_id": "m", "params": {}}"#,
+        )
+        .expect_err("unknown type must be rejected");
+        assert!(err.to_string().contains("unknown provider type"));
+    }
+
+    #[test]
+    fn anthropic_messages_provider_kind_is_rejected() {
+        let err = parse_typed(r#"{"type":"anthropic-messages","model_id":"claude","params":{}}"#)
+            .expect_err("removed provider kind must be rejected");
+        assert!(
+            err.to_string()
+                .contains("anthropic-messages is not available")
+        );
+    }
+
+    #[test]
+    fn old_provider_type_is_rejected() {
+        let err = serde_json::from_str::<Vec<ProviderConfig>>(
+            r#"[{"type": "tokenhub", "model_id": "glm", "params": {"api_key": "k"}}]"#,
+        )
+        .expect_err("old provider type must be rejected");
+        assert!(err.to_string().contains("unknown provider type: tokenhub"));
+    }
+
+    #[test]
+    fn explicit_endpoint_configuration_is_rejected() {
+        let err = serde_json::from_str::<super::ServeConfig>(r#"{"endpoints": []}"#)
+            .expect_err("endpoint bindings must be derived");
+        assert!(
+            err.to_string()
+                .contains("endpoints configuration is no longer supported")
+        );
+    }
+
+    #[test]
+    fn provider_kind_config_type_roundtrip() {
+        for kind in [
+            ProviderKind::OpenAiChatCompletions,
+            ProviderKind::OpenAiResponses,
+            ProviderKind::AnthropicMessages,
+            ProviderKind::BedrockConverse,
+            ProviderKind::GoogleVertex,
+        ] {
+            assert_eq!(
+                ProviderKind::from_config_type(kind.as_config_type()),
+                Some(kind)
+            );
+        }
+        assert_eq!(
+            ProviderKind::from_config_type("bedrock-converse-stream"),
+            Some(ProviderKind::BedrockConverse)
+        );
+        assert_eq!(ProviderKind::from_config_type("tokenhub"), None);
+    }
+}
+
+#[cfg(test)]
+mod defaults_tests {
+    use super::{DefaultsConfig, ServeConfig};
+
+    #[test]
+    fn defaults_model_parses_and_defaults_to_none() {
+        let config: ServeConfig =
+            serde_json::from_str(r#"{"defaults": {"model": "glm-5.3-flash"}, "providers": {}}"#)
+                .expect("parse");
+        assert_eq!(
+            config.defaults,
+            DefaultsConfig {
+                model: Some("glm-5.3-flash".to_string())
+            }
+        );
+
+        let config: ServeConfig = serde_json::from_str(r#"{}"#).expect("parse empty");
+        assert_eq!(config.defaults, DefaultsConfig::default());
+        assert!(config.defaults.model.is_none());
+    }
+
+    #[test]
+    fn defaults_model_must_reference_known_model() {
+        let config: ServeConfig = serde_json::from_str(
+            r#"{
+                "defaults": {"model": "unknown-model"},
+                "providers": {}
+            }"#,
+        )
+        .expect("parse");
+        let err = config
+            .validate()
+            .expect_err("unknown default must be rejected");
+        assert!(err.to_string().contains("defaults.model not found"));
+    }
+
+    #[test]
+    fn defaults_model_known_model_passes_validation() {
+        let config: ServeConfig = serde_json::from_str(
+            r#"{
+                "defaults": {"model": "GLM-Test"},
+                "providers": {"qcloud.cn":{"upstream":"tokenhub", "base_url":"https://x.example.com/v1"}},
+                "models": {"glm-test":{"model":"glm-5.3-flash", "upstream":{"provider":"qcloud.cn", "model":"m"}}}
+            }"#,
+        )
+        .expect("parse");
+        config
+            .validate()
+            .expect("known default passes (case-insensitive)");
+    }
+
+    #[test]
+    fn old_provider_lists_are_not_accepted_by_the_new_schema() {
+        assert!(serde_json::from_str::<super::ModelRegistryConfig>(r#"{"providers":[]}"#).is_err());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ResponseModelMode, parse_response_model_mode};
 
     #[test]
     fn parse_response_model_mode_defaults_to_upstream() {
@@ -358,20 +1409,67 @@ mod tests {
     }
 
     #[test]
-    fn parse_response_model_mode_parses_routed_and_fixed() {
-        let routed = parse_response_model_mode(Some("routed")).expect("routed mode");
-        let fixed = parse_response_model_mode(Some("fixed:gpt-4.1")).expect("fixed mode");
+    fn parse_response_model_mode_parses_plain_string() {
+        let fixed = parse_response_model_mode(Some("gpt-4.1")).expect("fixed model");
 
-        assert_eq!(routed, ResponseModelMode::Routed);
         assert_eq!(fixed, ResponseModelMode::Fixed("gpt-4.1".to_string()));
     }
 
     #[test]
-    fn parse_response_model_mode_rejects_invalid_values() {
-        let empty_fixed = parse_response_model_mode(Some("fixed:   "));
-        let unknown = parse_response_model_mode(Some("something-else"));
+    fn parse_response_model_mode_rejects_empty_values() {
+        assert!(parse_response_model_mode(Some("   ")).is_err());
+    }
+}
 
-        assert!(empty_fixed.is_err());
-        assert!(unknown.is_err());
+#[cfg(test)]
+mod derive_endpoints_tests {
+    use super::{DefaultsConfig, EndpointConfig, ProviderConfig, derive_endpoints_from_typed};
+
+    fn parse_typed(json: &str) -> ProviderConfig {
+        serde_json::from_str(json).expect("typed entry")
+    }
+
+    fn find<'a>(endpoints: &'a [EndpointConfig], path: &str) -> &'a EndpointConfig {
+        endpoints
+            .iter()
+            .find(|endpoint| endpoint.path == path)
+            .unwrap_or_else(|| panic!("endpoint {path} missing"))
+    }
+
+    #[test]
+    fn dialect_models_serve_three_chat_endpoints() {
+        let typed = vec![parse_typed(
+            r#"{"type": "openai-chat-completions", "model_id": "glm",
+                "params": {"base_url": "https://x.example.com/v1",
+                           "auth": {"scheme": "bearer", "api_key": "k"}, "model": "glm-up"}}"#,
+        )];
+        let endpoints = derive_endpoints_from_typed(&typed, &DefaultsConfig::default());
+
+        for path in ["/chat/completions", "/responses", "/messages"] {
+            assert_eq!(find(&endpoints, path).models, vec!["glm".to_string()]);
+        }
+        // Non-chat ModelAPI paths are not part of Yomo's Agent endpoint table.
+        assert!(
+            !endpoints
+                .iter()
+                .any(|endpoint| endpoint.path == "/embeddings")
+        );
+    }
+
+    #[test]
+    fn defaults_model_becomes_chat_default() {
+        let typed = vec![parse_typed(
+            r#"{"type": "openai-chat-completions", "model_id": "glm",
+                "params": {"base_url": "https://x.example.com/v1",
+                           "auth": {"scheme": "bearer", "api_key": "k"}, "model": "glm-up"}}"#,
+        )];
+        let defaults = DefaultsConfig {
+            model: Some("glm".to_string()),
+        };
+        let endpoints = derive_endpoints_from_typed(&typed, &defaults);
+
+        for path in ["/chat/completions", "/responses", "/messages"] {
+            assert_eq!(find(&endpoints, path).default_model.as_deref(), Some("glm"));
+        }
     }
 }

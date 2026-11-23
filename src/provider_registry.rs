@@ -1,26 +1,18 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use anyhow::Error;
 use async_trait::async_trait;
 use futures_core::Stream;
 
-use crate::llm_provider::anthropic_messages::{
-    build_anthropic_messages_provider, build_bedrock_messages_provider,
-};
-use crate::llm_provider::openai::build_openai_provider;
-use crate::llm_provider::openai_compatible::build_openai_compatible_provider;
-use crate::llm_provider::tokenhub::build_tokenhub_provider;
-use crate::llm_provider::vertexai::build_vertexai_provider;
-use crate::llm_provider::vllm_deepseek::build_vllm_deepseek_provider;
-use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
-use crate::model_api_provider::providers;
-use crate::model_api_provider::{ModelApiProvider, ProviderRequest, ProviderResponse};
-use crate::openai_types::ChatCompletionRequest;
+use crate::api::EndpointKind;
+use crate::dialects::build_bound_client_with_model_profiles;
+use crate::models::ModelProfileRegistry;
+use crate::provider::UnifiedRequest;
+use crate::provider::{BoundProvider, Provider, ProviderError, UnifiedEvent, UnifiedResponse};
 use crate::provider_error_notifier::{ProviderErrorEvent, ProviderErrorNotifier};
 use crate::serve_config::{
-    ConfigError, EndpointConfig, EndpointKind, ProviderConfig, ResponseModelMode,
-    parse_response_model_mode,
+    ConfigError, EndpointConfig, ModelBinding, ProviderConfig, ProviderKind, ProviderKindParams,
+    ResponseModelMode, parse_response_model_mode,
 };
 
 #[derive(Clone, Debug)]
@@ -31,13 +23,8 @@ pub struct SelectionResult {
 #[derive(Debug)]
 pub enum SelectionError {
     ModelRequired,
-    ModelNotSupported {
-        model: String,
-    },
-    ModelEndpointNotSupported {
-        model: String,
-        endpoint: EndpointKind,
-    },
+    ModelNotSupported { model: String },
+    ModelEndpointNotSupported { model: String, endpoint: String },
     OutstandingBalance,
     AccessDenied,
 }
@@ -51,20 +38,6 @@ pub trait SelectionStrategy<M>: Send + Sync {
         metadata: &M,
     ) -> Result<SelectionResult, SelectionError>;
 }
-
-/// Builds a custom chat provider from configuration.
-pub type ChatProviderBuilder<M> =
-    Arc<dyn Fn(&ProviderConfig) -> Result<Option<Arc<dyn Provider<M>>>, ConfigError> + Send + Sync>;
-
-/// Builds a custom model-api endpoint provider from configuration.
-pub type EndpointProviderBuilder<M> = Arc<
-    dyn Fn(
-            &ProviderConfig,
-            EndpointKind,
-        ) -> Result<Option<Arc<dyn ModelApiProvider<M>>>, ConfigError>
-        + Send
-        + Sync,
->;
 
 #[derive(Clone)]
 pub struct ByEndpointModel {
@@ -104,34 +77,11 @@ impl<M> SelectionStrategy<M> for ByEndpointModel {
 }
 
 #[derive(Clone)]
-struct ProviderCatalogEntry<M> {
-    model_id: String,
-    label: Option<String>,
-    response_model_mode: ResponseModelMode,
-    chat_provider: Option<Arc<dyn Provider<M>>>,
-    endpoint_providers: HashMap<EndpointKind, Arc<dyn ModelApiProvider<M>>>,
-}
-
-#[derive(Clone)]
-struct Catalog<M> {
-    providers: HashMap<String, ProviderCatalogEntry<M>>,
-    endpoints: HashMap<EndpointKind, EndpointConfig>,
-}
-
-#[derive(Clone)]
-struct ResolvedChatProvider<M> {
+struct RuntimeChatProvider<M> {
     model_id: String,
     label: Option<String>,
     response_model_mode: ResponseModelMode,
     provider: Arc<dyn Provider<M>>,
-}
-
-#[derive(Clone)]
-struct ResolvedEndpointProvider<M> {
-    model_id: String,
-    label: Option<String>,
-    response_model_mode: ResponseModelMode,
-    provider: Arc<dyn ModelApiProvider<M>>,
 }
 
 #[derive(Clone)]
@@ -142,243 +92,68 @@ pub struct ChatProviderEntry<M> {
     pub provider: Arc<dyn Provider<M>>,
 }
 
-#[derive(Clone)]
-pub struct EndpointProviderEntry<M> {
-    pub model_id: String,
-    pub label: Option<String>,
-    pub response_model_mode: ResponseModelMode,
-    pub provider: Arc<dyn ModelApiProvider<M>>,
+/// Chat model registry abstraction used by HTTP handlers.
+pub trait ProviderRegistry<M>: Send + Sync {
+    fn select_chat(
+        &self,
+        endpoint: EndpointKind,
+        model_id: Option<&str>,
+        metadata: &M,
+    ) -> Result<ChatProviderEntry<M>, SelectionError>
+    where
+        M: Clone + Send + Sync + 'static;
+
+    fn model_list(&self) -> Vec<String>;
 }
 
 #[derive(Clone)]
-pub struct ProviderRegistry<M> {
-    catalog: Catalog<M>,
+pub struct ConfigProviderRegistry<M> {
+    registry: Registry,
     strategy: Arc<dyn SelectionStrategy<M>>,
+    chats: HashMap<String, RuntimeChatProvider<M>>,
     error_notifier: Option<Arc<dyn ProviderErrorNotifier<M>>>,
 }
 
-impl<M> Catalog<M> {
-    fn from_config(
-        providers: &[ProviderConfig],
-        endpoints: &[EndpointConfig],
-        chat_builder: Option<&ChatProviderBuilder<M>>,
-        endpoint_builder: Option<&EndpointProviderBuilder<M>>,
-    ) -> Result<Self, ConfigError> {
-        let mut endpoint_map = HashMap::new();
-        for endpoint in endpoints {
-            let endpoint_kind = endpoint.endpoint()?;
-            if endpoint_map
-                .insert(endpoint_kind, endpoint.clone())
-                .is_some()
-            {
-                return Err(ConfigError::InvalidProvider(format!(
-                    "duplicate endpoint path: {}",
-                    endpoint_kind.as_path()
-                )));
-            }
-        }
+impl<M> ConfigProviderRegistry<M> {
+    pub fn from_entries(
+        entries: &[ProviderConfig],
+        strategy: Arc<dyn SelectionStrategy<M>>,
+    ) -> Result<Self, ConfigError>
+    where
+        M: Send + Sync + 'static,
+    {
+        Self::from_entries_with_model_profiles(entries, strategy, &ModelProfileRegistry::default())
+    }
 
-        let mut provider_config_by_model = HashMap::new();
-        for provider in providers {
-            provider_config_by_model.insert(provider.model_id.to_ascii_lowercase(), provider);
-        }
+    /// Build providers with profiles selected by each binding's public model.
+    pub fn from_entries_with_model_profiles(
+        entries: &[ProviderConfig],
+        strategy: Arc<dyn SelectionStrategy<M>>,
+        model_profiles: &ModelProfileRegistry,
+    ) -> Result<Self, ConfigError>
+    where
+        M: Send + Sync + 'static,
+    {
+        let registry = build_registry(entries)?;
+        let mut chats = HashMap::new();
 
-        let mut provider_map = HashMap::new();
-        for provider in providers {
-            let chat_provider = build_chat_provider_with_custom(provider, chat_builder)?;
-            let response_model_mode = parse_response_model_mode(provider.response_model.as_deref())
-                .map_err(|err| {
-                    ConfigError::InvalidProvider(format!(
-                        "invalid response_model for {}: {}",
-                        provider.model_id, err
-                    ))
-                })?;
-            provider_map.insert(
-                provider.model_id.to_ascii_lowercase(),
-                ProviderCatalogEntry {
-                    model_id: provider.model_id.clone(),
-                    label: provider.label.clone(),
-                    response_model_mode,
-                    chat_provider,
-                    endpoint_providers: HashMap::new(),
+        for typed in entries {
+            let provider = build_dialect_chat_provider(typed, model_profiles)?;
+            chats.insert(
+                typed.model_id.to_ascii_lowercase(),
+                RuntimeChatProvider {
+                    model_id: typed.model_id.clone(),
+                    label: typed.label.clone(),
+                    response_model_mode: typed_response_model_mode(typed)?,
+                    provider,
                 },
             );
         }
 
-        for endpoint in endpoints {
-            let endpoint_kind = endpoint.endpoint()?;
-            let model_set = endpoint_models(endpoint);
-
-            for model in model_set {
-                let provider_entry = provider_map.get_mut(&model).ok_or_else(|| {
-                    ConfigError::InvalidProvider(format!("model not found: {model}"))
-                })?;
-                if endpoint_kind == EndpointKind::ChatCompletions {
-                    if provider_entry.chat_provider.is_none() {
-                        return Err(ConfigError::InvalidProvider(format!(
-                            "provider {} does not support /chat/completions",
-                            provider_entry.model_id
-                        )));
-                    }
-                    continue;
-                }
-
-                let provider_config = provider_config_by_model
-                    .get(provider_entry.model_id.to_ascii_lowercase().as_str())
-                    .copied()
-                    .ok_or_else(|| {
-                        ConfigError::InvalidProvider(format!(
-                            "provider config not found for {}",
-                            provider_entry.model_id
-                        ))
-                    })?;
-
-                let endpoint_provider = build_endpoint_provider_with_custom(
-                    provider_config,
-                    endpoint_kind,
-                    endpoint_builder,
-                )?;
-                provider_entry
-                    .endpoint_providers
-                    .insert(endpoint_kind, endpoint_provider);
-            }
-        }
-
         Ok(Self {
-            providers: provider_map,
-            endpoints: endpoint_map,
-        })
-    }
-
-    fn contains_model(&self, model_id: &str) -> bool {
-        self.providers.contains_key(&model_id.to_ascii_lowercase())
-    }
-
-    fn supports_model_for_endpoint(&self, endpoint: EndpointKind, model_id: &str) -> bool {
-        let Some(endpoint_config) = self.endpoints.get(&endpoint) else {
-            return false;
-        };
-        endpoint_config
-            .models
-            .iter()
-            .any(|model| model.eq_ignore_ascii_case(model_id))
-            || endpoint_config
-                .default_model
-                .as_ref()
-                .is_some_and(|model| model.eq_ignore_ascii_case(model_id))
-    }
-
-    fn resolve_chat(
-        &self,
-        endpoint: EndpointKind,
-        model_id: &str,
-    ) -> Result<ResolvedChatProvider<M>, SelectionError> {
-        let catalog = self
-            .providers
-            .get(&model_id.to_ascii_lowercase())
-            .ok_or_else(|| SelectionError::ModelNotSupported {
-                model: model_id.to_string(),
-            })?;
-        let provider = catalog.chat_provider.clone().ok_or_else(|| {
-            SelectionError::ModelEndpointNotSupported {
-                model: model_id.to_string(),
-                endpoint,
-            }
-        })?;
-        Ok(ResolvedChatProvider {
-            model_id: catalog.model_id.clone(),
-            label: catalog.label.clone(),
-            response_model_mode: catalog.response_model_mode.clone(),
-            provider,
-        })
-    }
-
-    fn resolve_endpoint(
-        &self,
-        endpoint: EndpointKind,
-        model_id: &str,
-    ) -> Result<ResolvedEndpointProvider<M>, SelectionError> {
-        let catalog = self
-            .providers
-            .get(&model_id.to_ascii_lowercase())
-            .ok_or_else(|| SelectionError::ModelNotSupported {
-                model: model_id.to_string(),
-            })?;
-        let provider = catalog
-            .endpoint_providers
-            .get(&endpoint)
-            .cloned()
-            .ok_or_else(|| SelectionError::ModelEndpointNotSupported {
-                model: model_id.to_string(),
-                endpoint,
-            })?;
-        Ok(ResolvedEndpointProvider {
-            model_id: catalog.model_id.clone(),
-            label: catalog.label.clone(),
-            response_model_mode: catalog.response_model_mode.clone(),
-            provider,
-        })
-    }
-
-    fn model_list(&self) -> Vec<String> {
-        let mut models = Vec::new();
-        let mut seen = HashSet::new();
-        for endpoint in self.endpoints.values() {
-            for model in endpoint.models.iter().chain(endpoint.default_model.iter()) {
-                let normalized = model.to_ascii_lowercase();
-                if !seen.insert(normalized.clone()) {
-                    continue;
-                }
-
-                let model_id = self
-                    .providers
-                    .get(&normalized)
-                    .map(|provider| provider.model_id.clone())
-                    .unwrap_or_else(|| model.clone());
-                models.push(model_id);
-            }
-        }
-        models
-    }
-}
-
-fn endpoint_models(endpoint: &EndpointConfig) -> HashSet<String> {
-    let mut models = HashSet::new();
-    for model in &endpoint.models {
-        models.insert(model.to_ascii_lowercase());
-    }
-    if let Some(default_model) = &endpoint.default_model {
-        models.insert(default_model.to_ascii_lowercase());
-    }
-    models
-}
-
-impl<M> ProviderRegistry<M> {
-    pub fn from_config(
-        providers: &[ProviderConfig],
-        endpoints: &[EndpointConfig],
-        strategy: Arc<dyn SelectionStrategy<M>>,
-    ) -> Result<Self, ConfigError> {
-        Self::from_config_with_builders(providers, endpoints, strategy, None, None)
-    }
-
-    pub fn from_config_with_builders(
-        providers: &[ProviderConfig],
-        endpoints: &[EndpointConfig],
-        strategy: Arc<dyn SelectionStrategy<M>>,
-        chat_builder: Option<ChatProviderBuilder<M>>,
-        endpoint_builder: Option<EndpointProviderBuilder<M>>,
-    ) -> Result<Self, ConfigError> {
-        let catalog = Catalog::from_config(
-            providers,
-            endpoints,
-            chat_builder.as_ref(),
-            endpoint_builder.as_ref(),
-        )?;
-
-        Ok(Self {
-            catalog,
+            registry,
             strategy,
+            chats,
             error_notifier: None,
         })
     }
@@ -397,64 +172,35 @@ impl<M> ProviderRegistry<M> {
     where
         M: Clone + Send + Sync + 'static,
     {
-        let selected_model = self.select_model(endpoint, model_id, metadata)?;
-        let resolved = self
-            .catalog
-            .resolve_chat(endpoint, selected_model.as_str())?;
-        let provider =
-            self.wrap_chat_provider(endpoint, resolved.provider.clone(), &resolved.model_id);
-        Ok(ChatProviderEntry {
-            model_id: resolved.model_id,
-            label: resolved.label,
-            response_model_mode: resolved.response_model_mode,
-            provider,
-        })
-    }
-
-    pub fn select_endpoint(
-        &self,
-        endpoint: EndpointKind,
-        model_id: Option<&str>,
-        metadata: &M,
-    ) -> Result<EndpointProviderEntry<M>, SelectionError>
-    where
-        M: Clone + Send + Sync + 'static,
-    {
-        let selected_model = self.select_model(endpoint, model_id, metadata)?;
-        let resolved = self
-            .catalog
-            .resolve_endpoint(endpoint, selected_model.as_str())?;
-        let provider = self.wrap_endpoint_provider(resolved.provider.clone(), &resolved.model_id);
-        Ok(EndpointProviderEntry {
-            model_id: resolved.model_id,
-            label: resolved.label,
-            response_model_mode: resolved.response_model_mode,
-            provider,
-        })
-    }
-
-    fn select_model(
-        &self,
-        endpoint: EndpointKind,
-        model_id: Option<&str>,
-        metadata: &M,
-    ) -> Result<String, SelectionError> {
-        let selected = self.strategy.select(endpoint, model_id, metadata)?;
-        if !self.catalog.contains_model(selected.model_id.as_str()) {
-            return Err(SelectionError::ModelNotSupported {
-                model: selected.model_id,
-            });
-        }
-        if !self
-            .catalog
-            .supports_model_for_endpoint(endpoint, selected.model_id.as_str())
-        {
+        let SelectionResult { model_id } = self.strategy.select(endpoint, model_id, metadata)?;
+        let Some(entry) = self.registry.get(&model_id) else {
+            return Err(SelectionError::ModelNotSupported { model: model_id });
+        };
+        if !entry.serves_endpoint(endpoint) {
             return Err(SelectionError::ModelEndpointNotSupported {
-                model: selected.model_id,
-                endpoint,
+                model: entry.model_id.clone(),
+                endpoint: endpoint.as_path().to_string(),
             });
         }
-        Ok(selected.model_id)
+        let chat = self
+            .chats
+            .get(&entry.model_id.to_ascii_lowercase())
+            .ok_or_else(|| SelectionError::ModelEndpointNotSupported {
+                model: entry.model_id.clone(),
+                endpoint: endpoint.as_path().to_string(),
+            })?;
+        let provider = self.wrap_chat_provider(
+            endpoint,
+            Arc::clone(&chat.provider),
+            &chat.model_id,
+            metadata,
+        );
+        Ok(ChatProviderEntry {
+            model_id: chat.model_id.clone(),
+            label: chat.label.clone(),
+            response_model_mode: chat.response_model_mode.clone(),
+            provider,
+        })
     }
 
     fn wrap_chat_provider(
@@ -462,6 +208,7 @@ impl<M> ProviderRegistry<M> {
         endpoint: EndpointKind,
         provider: Arc<dyn Provider<M>>,
         model_id: &str,
+        metadata: &M,
     ) -> Arc<dyn Provider<M>>
     where
         M: Clone + Send + Sync + 'static,
@@ -472,53 +219,36 @@ impl<M> ProviderRegistry<M> {
                 error_notifier: Arc::clone(notifier),
                 model_id: model_id.to_string(),
                 endpoint: format!("/v1{}", endpoint.as_path()),
+                metadata: metadata.clone(),
             });
         }
         provider
-    }
-
-    fn wrap_endpoint_provider(
-        &self,
-        provider: Arc<dyn ModelApiProvider<M>>,
-        model_id: &str,
-    ) -> Arc<dyn ModelApiProvider<M>>
-    where
-        M: Clone + Send + Sync + 'static,
-    {
-        if let Some(notifier) = &self.error_notifier {
-            return Arc::new(HookedEndpointProvider {
-                inner: provider,
-                error_notifier: Arc::clone(notifier),
-                model_id: model_id.to_string(),
-            });
-        }
-        provider
-    }
-
-    pub fn notify_http_error(
-        &self,
-        endpoint: &str,
-        model: &str,
-        metadata: &M,
-        status: u16,
-        error: String,
-    ) where
-        M: Clone,
-    {
-        let Some(notifier) = &self.error_notifier else {
-            return;
-        };
-        notifier.notify_provider_error(ProviderErrorEvent {
-            model: Some(model.to_string()),
-            metadata: metadata.clone(),
-            http_status: Some(status),
-            error,
-            endpoint: Some(endpoint.to_string()),
-        });
     }
 
     pub fn model_list(&self) -> Vec<String> {
-        self.catalog.model_list()
+        self.registry
+            .model_ids()
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    }
+}
+
+impl<M> ProviderRegistry<M> for ConfigProviderRegistry<M> {
+    fn select_chat(
+        &self,
+        endpoint: EndpointKind,
+        model_id: Option<&str>,
+        metadata: &M,
+    ) -> Result<ChatProviderEntry<M>, SelectionError>
+    where
+        M: Clone + Send + Sync + 'static,
+    {
+        ConfigProviderRegistry::select_chat(self, endpoint, model_id, metadata)
+    }
+
+    fn model_list(&self) -> Vec<String> {
+        ConfigProviderRegistry::model_list(self)
     }
 }
 
@@ -528,6 +258,7 @@ struct HookedChatProvider<M> {
     error_notifier: Arc<dyn ProviderErrorNotifier<M>>,
     model_id: String,
     endpoint: String,
+    metadata: M,
 }
 
 #[async_trait]
@@ -539,29 +270,28 @@ where
         self.inner.model_id()
     }
 
-    async fn complete(
-        &self,
-        request: ChatCompletionRequest,
-        metadata: &M,
-    ) -> Result<UnifiedResponse, ProviderError> {
+    fn binding(&self) -> Option<&ModelBinding> {
+        self.inner.binding()
+    }
+
+    async fn complete(&self, request: UnifiedRequest) -> Result<UnifiedResponse, ProviderError> {
         self.inner
-            .complete(request, metadata)
+            .complete(request)
             .await
-            .map_err(|err| self.notify_error(metadata, err))
+            .map_err(|err| self.notify_error(err))
     }
 
     async fn stream<'a>(
         &'a self,
-        request: ChatCompletionRequest,
-        metadata: &M,
+        request: UnifiedRequest,
     ) -> Result<
         std::pin::Pin<Box<dyn Stream<Item = Result<UnifiedEvent, ProviderError>> + Send + 'a>>,
         ProviderError,
     > {
         self.inner
-            .stream(request, metadata)
+            .stream(request)
             .await
-            .map_err(|err| self.notify_error(metadata, err))
+            .map_err(|err| self.notify_error(err))
     }
 }
 
@@ -569,174 +299,68 @@ impl<M> HookedChatProvider<M>
 where
     M: Clone + Send + Sync + 'static,
 {
-    fn notify_error(&self, metadata: &M, err: ProviderError) -> ProviderError {
-        let http_status = match &err {
-            ProviderError::Public { status, .. } => Some(status.as_u16()),
-            ProviderError::Internal {
-                upstream_http_status,
-                ..
-            } => Some(upstream_http_status.as_u16()),
-        };
+    fn notify_error(&self, err: ProviderError) -> ProviderError {
+        let upstream = err.upstream_error();
         self.error_notifier
             .notify_provider_error(ProviderErrorEvent {
                 model: Some(self.model_id.clone()),
-                metadata: metadata.clone(),
-                http_status,
+                metadata: self.metadata.clone(),
+                http_status: Some(err.status().as_u16()),
                 error: err.to_string(),
                 endpoint: Some(self.endpoint.clone()),
+                origin: Some(err.origin().to_owned()),
+                upstream_class: upstream.map(|error| error.class.as_str().to_owned()),
+                upstream_code: upstream.and_then(|error| error.code.clone()),
+                upstream_request_id: upstream.and_then(|error| error.request_id.clone()),
             });
         err
     }
 }
 
-#[derive(Clone)]
-struct HookedEndpointProvider<M> {
-    inner: Arc<dyn ModelApiProvider<M>>,
-    error_notifier: Arc<dyn ProviderErrorNotifier<M>>,
-    model_id: String,
-}
-
-#[async_trait]
-impl<M> ModelApiProvider<M> for HookedEndpointProvider<M>
-where
-    M: Clone + Send + Sync + 'static,
-{
-    fn model_id(&self) -> &str {
-        self.inner.model_id()
-    }
-
-    async fn execute(&self, req: ProviderRequest, metadata: &M) -> Result<ProviderResponse, Error> {
-        let endpoint = req.endpoint_path.clone();
-        self.inner
-            .execute(req, metadata)
-            .await
-            .map_err(|err| self.notify_error(endpoint.as_str(), metadata, err))
-    }
-}
-
-impl<M> HookedEndpointProvider<M>
-where
-    M: Clone + Send + Sync + 'static,
-{
-    fn notify_error(&self, endpoint: &str, metadata: &M, err: Error) -> Error {
-        self.error_notifier
-            .notify_provider_error(ProviderErrorEvent {
-                model: Some(self.model_id.clone()),
-                metadata: metadata.clone(),
-                http_status: None,
-                error: err.to_string(),
-                endpoint: Some(endpoint.to_string()),
-            });
-        err
-    }
-}
-
-fn build_chat_provider_with_custom<M>(
+fn build_dialect_chat_provider<M>(
     provider: &ProviderConfig,
-    custom_builder: Option<&ChatProviderBuilder<M>>,
-) -> Result<Option<Arc<dyn Provider<M>>>, ConfigError> {
-    if let Some(builder) = custom_builder {
-        if let Some(provider) = builder(provider)? {
-            return Ok(Some(provider));
-        }
-    }
-
-    match provider.provider_type.as_str() {
-        "openai-compatible" => Ok(Some(Arc::new(build_openai_compatible_provider(
-            &provider.params,
-        )?))),
-        "openai" => Ok(Some(Arc::new(build_openai_provider(&provider.params)?))),
-        "anthropic-messages" => Ok(Some(Arc::new(build_anthropic_messages_provider(
-            &provider.params,
-        )?))),
-        "bedrock-messages" => Ok(Some(Arc::new(build_bedrock_messages_provider(
-            &provider.params,
-        )?))),
-        "tokenhub" => Ok(Some(Arc::new(build_tokenhub_provider(&provider.params)?))),
-        "vertexai" => Ok(Some(Arc::new(build_vertexai_provider(&provider.params)?))),
-        "vllm-deepseek" => Ok(Some(Arc::new(build_vllm_deepseek_provider(
-            &provider.params,
-        )?))),
-        _ => Ok(None),
+    model_profiles: &ModelProfileRegistry,
+) -> Result<Arc<dyn Provider<M>>, ConfigError>
+where
+    M: Send + Sync + 'static,
+{
+    let client = build_bound_client_with_model_profiles::<M>(provider, model_profiles)
+        .map_err(ConfigError::InvalidProvider)?;
+    match &provider.binding {
+        Some(binding) => Ok(Arc::new(BoundProvider::new(client, binding.clone()))),
+        None => Ok(client),
     }
 }
 
-fn build_endpoint_provider_with_custom<M>(
-    provider: &ProviderConfig,
-    endpoint: EndpointKind,
-    custom_builder: Option<&EndpointProviderBuilder<M>>,
-) -> Result<Arc<dyn ModelApiProvider<M>>, ConfigError> {
-    if let Some(builder) = custom_builder {
-        if let Some(provider) = builder(provider, endpoint)? {
-            return Ok(provider);
-        }
-    }
-
-    match endpoint {
-        EndpointKind::Messages => match provider.provider_type.as_str() {
-            "anthropic-messages" => providers::messages::build_client(provider),
-            "bedrock-messages" => providers::bedrock_messages::build_client(provider),
-            other => Err(ConfigError::InvalidProvider(format!(
-                "provider type {other} is not supported for /messages"
-            ))),
-        },
-        EndpointKind::SystemOne => match provider.provider_type.as_str() {
-            "typesafe-systemone" => providers::typesafe_systemone::build_client(provider),
-            other => Err(ConfigError::InvalidProvider(format!(
-                "provider type {other} is not supported for /systemone"
-            ))),
-        },
-        EndpointKind::Responses => match provider.provider_type.as_str() {
-            "openai-compatible" | "openai" | "tokenhub" => {
-                providers::responses::build_client(provider)
-            }
-            other => Err(ConfigError::InvalidProvider(format!(
-                "provider type {other} is not supported for /responses"
-            ))),
-        },
-        EndpointKind::Embeddings
-        | EndpointKind::Rerank
-        | EndpointKind::AudioSpeech
-        | EndpointKind::AudioTranscriptions
-        | EndpointKind::ImagesGenerations
-        | EndpointKind::ImagesEdits => match provider.provider_type.as_str() {
-            "openai-compatible" | "openai" | "tokenhub" => {
-                providers::passthrough::build_client(provider)
-            }
-            other => Err(ConfigError::InvalidProvider(format!(
-                "provider type {other} is not supported for {}",
-                endpoint.as_path()
-            ))),
-        },
-        EndpointKind::ModelsGenerateContent => match provider.provider_type.as_str() {
-            "vertexai" => providers::generate_content::build_client(provider),
-            other => Err(ConfigError::InvalidProvider(format!(
-                "provider type {other} is not supported for /models/:generateContent"
-            ))),
-        },
-        EndpointKind::ChatCompletions => Err(ConfigError::InvalidProvider(
-            "chat/completions uses chat provider directly".to_string(),
-        )),
-    }
+fn typed_response_model_mode(provider: &ProviderConfig) -> Result<ResponseModelMode, ConfigError> {
+    let raw = match &provider.params {
+        ProviderKindParams::OpenAiChatCompletions(params) => params.response_model.as_deref(),
+        ProviderKindParams::OpenAiResponses(params) => params.response_model.as_deref(),
+        _ => None,
+    };
+    parse_response_model_mode(raw).map_err(|err| {
+        ConfigError::InvalidProvider(format!(
+            "invalid response_model for {}: {}",
+            provider.model_id, err
+        ))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::pin::Pin;
     use std::sync::Arc;
 
-    use anyhow::Error;
-    use async_trait::async_trait;
-
     use super::{
-        ByEndpointModel, Catalog, ChatProviderBuilder, EndpointProviderBuilder,
-        ProviderCatalogEntry, ProviderRegistry, SelectionError, SelectionResult, SelectionStrategy,
+        ByEndpointModel, ConfigProviderRegistry, Registry, SelectionError, SelectionResult,
+        SelectionStrategy,
     };
-    use crate::llm_provider::{Provider, ProviderError, UnifiedEvent, UnifiedResponse};
-    use crate::model_api_provider::{ModelApiProvider, ProviderRequest, ProviderResponse};
-    use crate::openai_types::ChatCompletionRequest;
-    use crate::serve_config::{EndpointConfig, EndpointKind, ProviderConfig, ResponseModelMode};
+    use crate::api::EndpointKind;
+    use crate::serve_config::{EndpointConfig, ProviderConfig, ResponseModelMode};
+
+    fn typed_entry(json: &str) -> ProviderConfig {
+        serde_json::from_str(json).expect("typed entry")
+    }
 
     struct DenyStrategy;
 
@@ -748,57 +372,6 @@ mod tests {
             _metadata: &(),
         ) -> Result<SelectionResult, SelectionError> {
             Err(SelectionError::AccessDenied)
-        }
-    }
-
-    struct DummyChatProvider;
-
-    struct DummyEndpointProvider;
-
-    #[async_trait]
-    impl Provider<()> for DummyChatProvider {
-        fn model_id(&self) -> &str {
-            "chat-a"
-        }
-
-        async fn complete(
-            &self,
-            _request: ChatCompletionRequest,
-            _metadata: &(),
-        ) -> Result<UnifiedResponse, ProviderError> {
-            Err(ProviderError::internal("not used in test"))
-        }
-
-        async fn stream<'a>(
-            &'a self,
-            _request: ChatCompletionRequest,
-            _metadata: &(),
-        ) -> Result<
-            Pin<
-                Box<
-                    dyn futures_core::Stream<Item = Result<UnifiedEvent, ProviderError>>
-                        + Send
-                        + 'a,
-                >,
-            >,
-            ProviderError,
-        > {
-            Err(ProviderError::internal("not used in test"))
-        }
-    }
-
-    #[async_trait]
-    impl ModelApiProvider<()> for DummyEndpointProvider {
-        fn model_id(&self) -> &str {
-            "chat-a"
-        }
-
-        async fn execute(
-            &self,
-            _req: ProviderRequest,
-            _metadata: &(),
-        ) -> Result<ProviderResponse, Error> {
-            Err(Error::msg("not used in test"))
         }
     }
 
@@ -823,147 +396,23 @@ mod tests {
     }
 
     #[test]
-    fn from_config_rejects_unsupported_messages_provider_type() {
-        let providers = vec![ProviderConfig {
-            provider_type: "openai-compatible".to_string(),
-            model_id: "oai-a".to_string(),
-            label: None,
-            response_model: None,
-            params: HashMap::from([
-                ("api_key".to_string(), "sk-test".to_string()),
-                (
-                    "base_url".to_string(),
-                    "https://api.example.com/v1".to_string(),
-                ),
-                ("model".to_string(), "gpt-4.1".to_string()),
-            ]),
-        }];
-        let endpoints = vec![EndpointConfig {
-            path: "/messages".to_string(),
-            models: vec!["oai-a".to_string()],
-            default_model: Some("oai-a".to_string()),
-        }];
-
-        let strategy = Arc::new(ByEndpointModel::new(HashMap::from([(
-            EndpointKind::Messages,
-            endpoints[0].clone(),
-        )])));
-        let err = match ProviderRegistry::<()>::from_config(&providers, &endpoints, strategy) {
-            Ok(_) => panic!("/messages should reject openai-compatible provider type"),
-            Err(err) => err,
-        };
-
-        assert!(
-            err.to_string()
-                .contains("provider type openai-compatible is not supported for /messages")
-        );
-    }
-
-    #[test]
-    fn from_config_accepts_typesafe_systemone_provider_type() {
-        let providers = vec![ProviderConfig {
-            provider_type: "typesafe-systemone".to_string(),
-            model_id: "jev-latest".to_string(),
-            label: None,
-            response_model: None,
-            params: HashMap::from([
-                ("api_key".to_string(), "ts-test".to_string()),
-                (
-                    "base_url".to_string(),
-                    "https://api.typesafe.ai/v1".to_string(),
-                ),
-                ("model".to_string(), "jev-latest".to_string()),
-            ]),
-        }];
-        let endpoints = vec![EndpointConfig {
-            path: "/systemone".to_string(),
-            models: vec!["jev-latest".to_string()],
-            default_model: Some("jev-latest".to_string()),
-        }];
-
-        let strategy = Arc::new(ByEndpointModel::new(HashMap::from([(
-            EndpointKind::SystemOne,
-            endpoints[0].clone(),
-        )])));
-        let registry = ProviderRegistry::<()>::from_config(&providers, &endpoints, strategy)
-            .expect("/systemone should accept typesafe-systemone provider type");
-
-        let selected = registry
-            .select_endpoint(EndpointKind::SystemOne, None, &())
-            .expect("systemone provider should be selectable");
-        assert_eq!(selected.model_id, "jev-latest");
-    }
-
-    #[test]
-    fn from_config_rejects_unsupported_systemone_provider_type() {
-        let providers = vec![ProviderConfig {
-            provider_type: "openai-compatible".to_string(),
-            model_id: "jev-latest".to_string(),
-            label: None,
-            response_model: None,
-            params: HashMap::from([
-                ("api_key".to_string(), "ts-test".to_string()),
-                (
-                    "base_url".to_string(),
-                    "https://api.example.com/v1".to_string(),
-                ),
-                ("model".to_string(), "jev-latest".to_string()),
-            ]),
-        }];
-        let endpoints = vec![EndpointConfig {
-            path: "/systemone".to_string(),
-            models: vec!["jev-latest".to_string()],
-            default_model: Some("jev-latest".to_string()),
-        }];
-
-        let strategy = Arc::new(ByEndpointModel::new(HashMap::from([(
-            EndpointKind::SystemOne,
-            endpoints[0].clone(),
-        )])));
-        let err = match ProviderRegistry::<()>::from_config(&providers, &endpoints, strategy) {
-            Ok(_) => panic!("/systemone should reject openai-compatible provider type"),
-            Err(err) => err,
-        };
-
-        assert!(
-            err.to_string()
-                .contains("provider type openai-compatible is not supported for /systemone")
-        );
-    }
-
-    #[test]
-    fn from_config_with_builders_accepts_custom_chat_provider() {
-        let providers = vec![ProviderConfig {
-            provider_type: "custom-chat".to_string(),
-            model_id: "gpt-5.5".to_string(),
-            label: None,
-            response_model: None,
-            params: HashMap::new(),
-        }];
-        let endpoints = vec![EndpointConfig {
-            path: "/chat/completions".to_string(),
-            models: vec!["gpt-5.5".to_string()],
-            default_model: Some("gpt-5.5".to_string()),
-        }];
+    fn from_entries_builds_selectable_dialect_provider() {
+        let providers = vec![typed_entry(
+            r#"{"type": "openai-chat-completions", "model_id": "gpt-5.5",
+                "params": {"base_url": "https://api.example.com/v1",
+                "auth": {"scheme": "bearer", "api_key": "sk-test"},
+                "model": "gpt-5.5"}}"#,
+        )];
         let strategy = Arc::new(ByEndpointModel::new(HashMap::from([(
             EndpointKind::ChatCompletions,
-            endpoints[0].clone(),
+            EndpointConfig {
+                path: "/chat/completions".to_string(),
+                models: vec!["gpt-5.5".to_string()],
+                default_model: Some("gpt-5.5".to_string()),
+            },
         )])));
-        let chat_builder: ChatProviderBuilder<()> = Arc::new(|provider| {
-            if provider.provider_type == "custom-chat" {
-                return Ok(Some(Arc::new(DummyChatProvider)));
-            }
-            Ok(None)
-        });
-
-        let registry = ProviderRegistry::<()>::from_config_with_builders(
-            &providers,
-            &endpoints,
-            strategy,
-            Some(chat_builder),
-            None,
-        )
-        .expect("custom chat provider should be accepted for chat completions");
+        let registry = ConfigProviderRegistry::<()>::from_entries(&providers, strategy)
+            .expect("dialect provider should build");
 
         let selected = registry
             .select_chat(EndpointKind::ChatCompletions, None, &())
@@ -972,53 +421,11 @@ mod tests {
     }
 
     #[test]
-    fn from_config_with_builders_accepts_custom_endpoint_provider() {
-        let providers = vec![ProviderConfig {
-            provider_type: "custom-endpoint".to_string(),
-            model_id: "gpt-5.5".to_string(),
-            label: None,
-            response_model: None,
-            params: HashMap::new(),
-        }];
-        let endpoints = vec![EndpointConfig {
-            path: "/responses".to_string(),
-            models: vec!["gpt-5.5".to_string()],
-            default_model: Some("gpt-5.5".to_string()),
-        }];
-        let strategy = Arc::new(ByEndpointModel::new(HashMap::from([(
-            EndpointKind::Responses,
-            endpoints[0].clone(),
-        )])));
-        let endpoint_builder: EndpointProviderBuilder<()> = Arc::new(|provider, endpoint| {
-            if provider.provider_type == "custom-endpoint" && endpoint == EndpointKind::Responses {
-                return Ok(Some(Arc::new(DummyEndpointProvider)));
-            }
-            Ok(None)
-        });
-
-        let registry = ProviderRegistry::<()>::from_config_with_builders(
-            &providers,
-            &endpoints,
-            strategy,
-            None,
-            Some(endpoint_builder),
-        )
-        .expect("custom endpoint provider should be accepted for responses endpoint");
-
-        let selected = registry
-            .select_endpoint(EndpointKind::Responses, None, &())
-            .expect("responses provider should be selectable");
-        assert_eq!(selected.model_id, "gpt-5.5");
-    }
-
-    #[test]
     fn select_chat_propagates_access_denied_from_strategy() {
-        let registry = ProviderRegistry {
-            catalog: Catalog {
-                providers: HashMap::new(),
-                endpoints: HashMap::new(),
-            },
+        let registry = ConfigProviderRegistry {
+            registry: Registry::default(),
             strategy: Arc::new(DenyStrategy),
+            chats: HashMap::new(),
             error_notifier: None,
         };
 
@@ -1031,221 +438,40 @@ mod tests {
     }
 
     #[test]
-    fn select_endpoint_requires_endpoint_capability() {
-        let endpoint = EndpointConfig {
-            path: "/responses".to_string(),
-            models: vec!["chat-a".to_string()],
-            default_model: Some("chat-a".to_string()),
-        };
+    fn model_list_returns_registry_models() {
+        let providers = vec![typed_entry(
+            r#"{"type": "openai-chat-completions", "model_id": "enabled-model",
+                    "params": {"base_url": "https://api.example.com/v1",
+                    "auth": {"scheme": "bearer", "api_key": "sk-test"},
+                    "model": "enabled-model"}}"#,
+        )];
+        let strategy = Arc::new(ByEndpointModel::new(HashMap::new()));
 
-        let registry = ProviderRegistry {
-            catalog: Catalog {
-                providers: HashMap::from([(
-                    "chat-a".to_string(),
-                    ProviderCatalogEntry {
-                        model_id: "chat-a".to_string(),
-                        label: None,
-                        response_model_mode: ResponseModelMode::Upstream,
-                        chat_provider: Some(Arc::new(DummyChatProvider)),
-                        endpoint_providers: HashMap::new(),
-                    },
-                )]),
-                endpoints: HashMap::from([(EndpointKind::Responses, endpoint)]),
-            },
-            strategy: Arc::new(ByEndpointModel::new(HashMap::from([(
-                EndpointKind::Responses,
-                EndpointConfig {
-                    path: "/responses".to_string(),
-                    models: vec!["chat-a".to_string()],
-                    default_model: Some("chat-a".to_string()),
-                },
-            )]))),
-            error_notifier: None,
-        };
-
-        let err = match registry.select_endpoint(EndpointKind::Responses, None, &()) {
-            Ok(_) => panic!("endpoint provider capability is required"),
-            Err(err) => err,
-        };
-        assert!(matches!(
-            err,
-            SelectionError::ModelEndpointNotSupported {
-                model,
-                endpoint: EndpointKind::Responses,
-            } if model == "chat-a"
-        ));
-    }
-
-    #[test]
-    fn select_endpoint_distinguishes_unknown_model_from_endpoint_restriction() {
-        let registry = ProviderRegistry {
-            catalog: Catalog {
-                providers: HashMap::from([(
-                    "chat-a".to_string(),
-                    ProviderCatalogEntry {
-                        model_id: "chat-a".to_string(),
-                        label: None,
-                        response_model_mode: ResponseModelMode::Upstream,
-                        chat_provider: Some(Arc::new(DummyChatProvider)),
-                        endpoint_providers: HashMap::new(),
-                    },
-                )]),
-                endpoints: HashMap::from([(
-                    EndpointKind::Responses,
-                    EndpointConfig {
-                        path: "/responses".to_string(),
-                        models: vec![],
-                        default_model: None,
-                    },
-                )]),
-            },
-            strategy: Arc::new(ByEndpointModel::new(HashMap::new())),
-            error_notifier: None,
-        };
-
-        let unknown_model =
-            match registry.select_endpoint(EndpointKind::Responses, Some("unknown-model"), &()) {
-                Ok(_) => panic!("unknown model must be rejected"),
-                Err(err) => err,
-            };
-        assert!(matches!(
-            unknown_model,
-            SelectionError::ModelNotSupported { model } if model == "unknown-model"
-        ));
-
-        let restricted_model =
-            match registry.select_endpoint(EndpointKind::Responses, Some("chat-a"), &()) {
-                Ok(_) => panic!("model excluded from endpoint must be rejected"),
-                Err(err) => err,
-            };
-        assert!(matches!(
-            restricted_model,
-            SelectionError::ModelEndpointNotSupported {
-                model,
-                endpoint: EndpointKind::Responses,
-            } if model == "chat-a"
-        ));
-    }
-
-    #[test]
-    fn from_config_rejects_duplicate_endpoint_paths() {
-        let providers = vec![ProviderConfig {
-            provider_type: "openai-compatible".to_string(),
-            model_id: "oai-a".to_string(),
-            label: None,
-            response_model: None,
-            params: HashMap::from([
-                ("api_key".to_string(), "sk-test".to_string()),
-                (
-                    "base_url".to_string(),
-                    "https://api.example.com/v1".to_string(),
-                ),
-                ("model".to_string(), "gpt-4.1".to_string()),
-            ]),
-        }];
-        let endpoints = vec![
-            EndpointConfig {
-                path: "/responses".to_string(),
-                models: vec!["oai-a".to_string()],
-                default_model: Some("oai-a".to_string()),
-            },
-            EndpointConfig {
-                path: "/responses".to_string(),
-                models: vec!["oai-a".to_string()],
-                default_model: Some("oai-a".to_string()),
-            },
-        ];
-
-        let strategy = Arc::new(ByEndpointModel::new(HashMap::from([(
-            EndpointKind::Responses,
-            endpoints[0].clone(),
-        )])));
-        let err = match ProviderRegistry::<()>::from_config(&providers, &endpoints, strategy) {
-            Ok(_) => panic!("duplicate endpoint path must be rejected"),
-            Err(err) => err,
-        };
-
-        assert!(
-            err.to_string()
-                .contains("duplicate endpoint path: /responses")
-        );
-    }
-
-    #[test]
-    fn model_list_returns_only_models_enabled_by_endpoints() {
-        let providers = vec![
-            ProviderConfig {
-                provider_type: "openai-compatible".to_string(),
-                model_id: "enabled-model".to_string(),
-                label: None,
-                response_model: None,
-                params: HashMap::from([
-                    ("api_key".to_string(), "sk-test".to_string()),
-                    (
-                        "base_url".to_string(),
-                        "https://api.example.com/v1".to_string(),
-                    ),
-                    ("model".to_string(), "enabled-model".to_string()),
-                ]),
-            },
-            ProviderConfig {
-                provider_type: "openai-compatible".to_string(),
-                model_id: "unused-model".to_string(),
-                label: None,
-                response_model: None,
-                params: HashMap::from([
-                    ("api_key".to_string(), "sk-test".to_string()),
-                    (
-                        "base_url".to_string(),
-                        "https://api.example.com/v1".to_string(),
-                    ),
-                    ("model".to_string(), "unused-model".to_string()),
-                ]),
-            },
-        ];
-        let endpoints = vec![EndpointConfig {
-            path: "/chat/completions".to_string(),
-            models: vec!["enabled-model".to_string()],
-            default_model: Some("enabled-model".to_string()),
-        }];
-        let strategy = Arc::new(ByEndpointModel::new(HashMap::from([(
-            EndpointKind::ChatCompletions,
-            endpoints[0].clone(),
-        )])));
-
-        let registry = ProviderRegistry::<()>::from_config(&providers, &endpoints, strategy)
-            .expect("registry should be created");
-
-        assert_eq!(registry.model_list(), vec!["enabled-model".to_string()]);
+        let mut models = ConfigProviderRegistry::<()>::from_entries(&providers, strategy)
+            .expect("registry should be created")
+            .model_list();
+        models.sort();
+        assert_eq!(models, vec!["enabled-model".to_string()]);
     }
 
     #[test]
     fn select_chat_propagates_provider_response_model_mode() {
-        let providers = vec![ProviderConfig {
-            provider_type: "openai-compatible".to_string(),
-            model_id: "enabled-model".to_string(),
-            label: None,
-            response_model: Some("fixed:masked-model".to_string()),
-            params: HashMap::from([
-                ("api_key".to_string(), "sk-test".to_string()),
-                (
-                    "base_url".to_string(),
-                    "https://api.example.com/v1".to_string(),
-                ),
-                ("model".to_string(), "enabled-model".to_string()),
-            ]),
-        }];
-        let endpoints = vec![EndpointConfig {
-            path: "/chat/completions".to_string(),
-            models: vec!["enabled-model".to_string()],
-            default_model: Some("enabled-model".to_string()),
-        }];
+        let providers = vec![typed_entry(
+            r#"{"type": "openai-chat-completions", "model_id": "enabled-model",
+                "params": {"base_url": "https://api.example.com/v1",
+                "auth": {"scheme": "bearer", "api_key": "sk-test"},
+                "model": "enabled-model", "response_model": "masked-model"}}"#,
+        )];
         let strategy = Arc::new(ByEndpointModel::new(HashMap::from([(
             EndpointKind::ChatCompletions,
-            endpoints[0].clone(),
+            EndpointConfig {
+                path: "/chat/completions".to_string(),
+                models: vec!["enabled-model".to_string()],
+                default_model: Some("enabled-model".to_string()),
+            },
         )])));
 
-        let registry = ProviderRegistry::<()>::from_config(&providers, &endpoints, strategy)
+        let registry = ConfigProviderRegistry::<()>::from_entries(&providers, strategy)
             .expect("registry should be created");
         let selected = registry
             .select_chat(EndpointKind::ChatCompletions, None, &())
@@ -1255,5 +481,152 @@ mod tests {
             selected.response_model_mode,
             ResponseModelMode::Fixed("masked-model".to_string())
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Agent provider registry
+// ---------------------------------------------------------------------------
+
+/// Chat endpoints (the three a dialect kind may bind to).
+fn is_chat_endpoint(endpoint: EndpointKind) -> bool {
+    matches!(
+        endpoint,
+        EndpointKind::ChatCompletions | EndpointKind::Responses | EndpointKind::Messages
+    )
+}
+
+/// One entry in the registry, available for lookup at request time.
+#[derive(Clone)]
+pub struct RegistryEntry {
+    pub model_id: String,
+    pub kind: ProviderKind,
+    /// Display label (o11y / agent loop).
+    pub label: Option<String>,
+}
+
+impl RegistryEntry {
+    /// Whether this model serves an endpoint (part of the existence check).
+    pub fn serves_endpoint(&self, endpoint: EndpointKind) -> bool {
+        is_chat_endpoint(endpoint)
+    }
+}
+
+/// Registry of configured providers, with entries registered after deduplication.
+#[derive(Clone, Default)]
+pub struct Registry {
+    entries: HashMap<String, RegistryEntry>,
+}
+
+impl Registry {
+    pub fn get(&self, model_id: &str) -> Option<&RegistryEntry> {
+        self.entries.get(&model_id.to_ascii_lowercase())
+    }
+
+    pub fn entry_count(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn model_ids(&self) -> Vec<&str> {
+        self.entries
+            .values()
+            .map(|entry| entry.model_id.as_str())
+            .collect()
+    }
+}
+
+/// Build the provider registry, validating model and endpoint bindings.
+pub fn build_registry(entries: &[ProviderConfig]) -> Result<Registry, ConfigError> {
+    let mut model_ids = HashSet::new();
+    let mut registry_entries = HashMap::new();
+
+    for typed in entries {
+        // Reject duplicate model IDs, ignoring case.
+        let normalized = typed.model_id.to_ascii_lowercase();
+        if !model_ids.insert(normalized.clone()) {
+            return Err(ConfigError::InvalidProvider(format!(
+                "duplicate model_id: {}",
+                typed.model_id
+            )));
+        }
+
+        registry_entries.insert(
+            normalized,
+            RegistryEntry {
+                model_id: typed.model_id.clone(),
+                kind: typed.kind,
+                label: typed.label.clone(),
+            },
+        );
+    }
+
+    Ok(Registry {
+        entries: registry_entries,
+    })
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use super::{Registry, build_registry};
+    use crate::api::EndpointKind;
+    use crate::serve_config::ProviderConfig;
+
+    fn typed_entry(json: &str) -> ProviderConfig {
+        serde_json::from_str(json).expect("typed entry json")
+    }
+
+    fn chat_kind_entry(model_id: &str, kind: &str) -> ProviderConfig {
+        let base = format!(
+            r#"{{"type": "{kind}", "model_id": "{model_id}", "params": {{"base_url": "https://x.example.com/v1", "auth": {{"scheme": "bearer", "api_key": "k"}}, "model": "{model_id}"}}}}"#
+        );
+        typed_entry(&base)
+    }
+
+    #[test]
+    fn build_registry_accepts_agent_provider_entries() {
+        let entries = vec![
+            chat_kind_entry("glm-5.3-flash", "openai-chat-completions"),
+            chat_kind_entry("gpt-5.3-codex", "openai-responses"),
+        ];
+        let registry = build_registry(&entries).expect("registry");
+        assert_eq!(registry.entry_count(), 2);
+    }
+
+    #[test]
+    fn build_registry_rejects_duplicate_model_id_case_insensitive() {
+        let entries = vec![
+            chat_kind_entry("glm-5.3-flash", "openai-chat-completions"),
+            chat_kind_entry("GLM-5.3-FLASH", "openai-responses"),
+        ];
+        let err = build_registry(&entries)
+            .err()
+            .expect("duplicate model_id must be rejected");
+        assert!(err.to_string().contains("duplicate model_id"));
+    }
+
+    #[test]
+    fn registry_entry_serves_chat_endpoints_for_dialects() {
+        let entries = vec![chat_kind_entry("glm", "openai-chat-completions")];
+        let registry = build_registry(&entries).expect("registry");
+        let entry = registry.get("glm").expect("entry");
+        assert!(entry.serves_endpoint(EndpointKind::ChatCompletions));
+        assert!(entry.serves_endpoint(EndpointKind::Responses));
+        assert!(entry.serves_endpoint(EndpointKind::Messages));
+    }
+
+    #[test]
+    fn registry_lookup_is_case_insensitive() {
+        let entries = vec![chat_kind_entry("GLM-5.3-Flash", "openai-chat-completions")];
+        let registry = build_registry(&entries).expect("registry");
+        assert!(registry.get("glm-5.3-flash").is_some());
+        assert!(registry.get("UNKNOWN").is_none());
+        assert_eq!(registry.model_ids(), vec!["GLM-5.3-Flash"]);
+    }
+
+    #[test]
+    fn empty_registry_is_valid() {
+        let registry = build_registry(&[]).expect("empty registry");
+        assert_eq!(registry.entry_count(), 0);
+        assert_eq!(Registry::default().entry_count(), 0);
     }
 }

@@ -8,6 +8,14 @@ pub struct ProviderErrorEvent<M> {
     pub http_status: Option<u16>,
     pub error: String,
     pub endpoint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_class: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_request_id: Option<String>,
 }
 
 /// Handles provider errors from both LLM and model API registries.
