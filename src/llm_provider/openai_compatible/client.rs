@@ -117,7 +117,7 @@ pub struct Config {
     pub error_parser: Option<Arc<dyn Fn(&[u8]) -> Option<Value> + Send + Sync>>,
 }
 
-pub const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 600;
+pub const DEFAULT_REQUEST_TIMEOUT_SECS: u64 = 1800;
 pub const DEFAULT_STREAM_FIRST_BYTE_TIMEOUT_SECS: u64 = 180;
 pub const DEFAULT_STREAM_IDLE_TIMEOUT_SECS: u64 = 180;
 
